@@ -727,16 +727,16 @@ function AdvancedTab({ onRerunTour }: { onRerunTour: () => void }): React.JSX.El
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-parchment px-6 py-3">
-        <div>
+      <div className="flex flex-col gap-3 border-b border-parchment px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <div className="text-[13px] text-ink">Diagnostics</div>
           {paths && (
-            <div className="text-[11px] text-dusty">
+            <div className="truncate text-[11px] text-dusty">
               Log file: <code className="font-mono">{paths.currentFile}</code>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onRerunTour}
             className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink hover:border-onyx/30"
