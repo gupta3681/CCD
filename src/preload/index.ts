@@ -46,11 +46,11 @@ const api = {
   ): Promise<void> => ipcRenderer.invoke('permission:respond', requestId, decision),
 
   appSettings: {
-    get: (): Promise<AppSettings & { gatewayKeySet: boolean }> =>
+    get: (): Promise<AppSettings & { gatewayKeySet: boolean; keyStorage: 'encrypted' | 'plaintext' | 'none' }> =>
       ipcRenderer.invoke('appSettings:get'),
     set: (
       patch: Partial<AppSettings> & { gatewayApiKey?: string | null }
-    ): Promise<AppSettings & { gatewayKeySet: boolean }> =>
+    ): Promise<AppSettings & { gatewayKeySet: boolean; keyStorage: 'encrypted' | 'plaintext' | 'none' }> =>
       ipcRenderer.invoke('appSettings:set', patch)
   },
 

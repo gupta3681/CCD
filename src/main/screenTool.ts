@@ -16,14 +16,19 @@ Verdict guide:
 Be concise. Do not refuse to rate. Output JSON only, no markdown fence.`
 
 let client: Anthropic | null = null
+let clientFingerprint = ''
 
 function getClient(): Anthropic {
-  if (client) return client
+  // Re-create the client when env changes — otherwise we'd keep using the old
+  // gateway/key after the user changes them in Settings.
+  const fp = `${process.env.ANTHROPIC_BASE_URL ?? ''}|${process.env.ANTHROPIC_API_KEY ?? ''}|${process.env.ANTHROPIC_AUTH_TOKEN ?? ''}`
+  if (client && fp === clientFingerprint) return client
   client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
     baseURL: process.env.ANTHROPIC_BASE_URL || undefined,
     authToken: process.env.ANTHROPIC_AUTH_TOKEN
   })
+  clientFingerprint = fp
   return client
 }
 
@@ -84,6 +89,15 @@ ${JSON.stringify(input, null, 2)}`
       ms: Date.now() - start
     }
   } catch (err) {
+    // Don't surface a CAUTION bubble for a user-initiated cancel.
+    if (signal?.aborted) {
+      return {
+        summary: '',
+        verdict: 'CAUTION',
+        reason: 'aborted',
+        ms: Date.now() - start
+      }
+    }
     return {
       summary: 'Screening failed.',
       verdict: 'CAUTION',

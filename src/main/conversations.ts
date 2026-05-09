@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { Bubble, Conversation, ConversationSummary } from '../shared/types'
 import { atomicWrite, porticoDir } from './util'
@@ -33,7 +33,15 @@ function load(): Store {
     }
     cache = parsed
   } catch (err) {
-    console.error('[conversations] failed to read store, starting fresh:', err)
+    // Don't silently overwrite the broken file with {}. Move it aside so the
+    // user (or a recovery tool) can attempt to salvage their chat history.
+    const backup = `${file}.corrupt-${Date.now()}`
+    try {
+      renameSync(file, backup)
+      console.error(`[conversations] failed to read store, moved to ${backup}:`, err)
+    } catch {
+      console.error('[conversations] failed to read store and failed to back up:', err)
+    }
     cache = {}
   }
   return cache

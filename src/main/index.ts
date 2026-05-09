@@ -1,5 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { join, resolve as pathResolve } from 'path'
+import { homedir } from 'os'
+import { existsSync, statSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { config as loadDotenv } from 'dotenv'
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -55,6 +57,31 @@ function denyAllPending(reason: string): void {
   }
 }
 
+function isPathRevealable(p: string): boolean {
+  if (typeof p !== 'string' || p.length === 0) return false
+  try {
+    const resolved = pathResolve(p)
+    const userData = app.getPath('userData')
+    return resolved.startsWith(homedir()) || resolved.startsWith(userData)
+  } catch {
+    return false
+  }
+}
+
+function isCwdSafe(p: string | null): p is string {
+  if (typeof p !== 'string' || p.length === 0) return false
+  try {
+    const resolved = pathResolve(p)
+    if (!existsSync(resolved)) return false
+    if (!statSync(resolved).isDirectory()) return false
+    // Allow anything inside HOME. /tmp/system paths are blocked since they're
+    // not what a non-engineer should be agent-ing inside.
+    return resolved.startsWith(homedir())
+  } catch {
+    return false
+  }
+}
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -67,16 +94,34 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      // Explicit security defaults — Electron defaults are safe today, but a
+      // future template change shouldn't silently expose Node to the renderer.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false, // preload uses Node `path` etc. — keep off, but lock the rest down.
+      webSecurity: true,
+      allowRunningInsecureContent: false
     }
   })
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
-  mainWindow.on('closed', () => denyAllPending('window closed'))
+  mainWindow.on('closed', () => {
+    if (BrowserWindow.getAllWindows().length === 0) denyAllPending('all windows closed')
+  })
 
+  // Allowlist external URL schemes. The agent renders attacker-controlled
+  // markdown, which can contain links — without this, clicking a link could
+  // launch any registered protocol handler (vscode://, slack://, file://).
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (isExternalSchemeAllowed(details.url)) shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+  // Block in-window navigation away from the app shell entirely.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault()
+      if (isExternalSchemeAllowed(url)) shell.openExternal(url)
+    }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -88,7 +133,19 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+function isExternalSchemeAllowed(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:' || u.protocol === 'mailto:'
+  } catch {
+    return false
+  }
+}
+
 function gatewayInfo(): { gateway: string; configured: boolean; model: string } {
+  // Source of truth: in-app settings + env (settings already pushed into env
+  // by appSettings.applyToEnv). Combining both here covers the case where the
+  // user has only .env set or only settings.json set.
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? ''
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
   const model = modelFor()
@@ -162,9 +219,12 @@ app.whenReady().then(() => {
   ipcMain.handle('conversations:rename', (_e, id: string, title: string) =>
     conversations.rename(id, title)
   )
-  ipcMain.handle('conversations:setCwd', (_e, id: string, cwd: string | null) =>
+  ipcMain.handle('conversations:setCwd', (_e, id: string, cwd: string | null) => {
+    if (cwd !== null && !isCwdSafe(cwd)) {
+      throw new Error('Working folder must be an existing directory inside your home folder.')
+    }
     conversations.setCwd(id, cwd)
-  )
+  })
 
   // ── Native dialogs / shell ────────────────────────────────────────────
   ipcMain.handle('dialog:pickFolder', async (event, defaultPath?: string) => {
@@ -181,6 +241,10 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('shell:revealPath', (_e, p: string) => {
+    // Only reveal paths under the user's home or the app's userData dir.
+    // Prevents a compromised renderer from probing arbitrary filesystem
+    // locations via a Finder/Explorer side-channel.
+    if (!isPathRevealable(p)) return
     shell.showItemInFolder(p)
   })
 
@@ -194,7 +258,10 @@ app.whenReady().then(() => {
       }
 
       const resumeId = conversations.getSessionId(conversationId)
-      const cwd = conversations.getCwd(conversationId) || undefined
+      const storedCwd = conversations.getCwd(conversationId)
+      // Re-validate at use time — the renderer is the only writer today, but
+      // the conversations.json file could have been edited externally.
+      const cwd = storedCwd && isCwdSafe(storedCwd) ? storedCwd : undefined
       const controller = new AbortController()
       activeRuns.set(runId, controller)
 

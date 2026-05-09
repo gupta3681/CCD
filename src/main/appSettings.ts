@@ -13,9 +13,23 @@ interface PersistedSettings extends AppSettings {
   apiKeyPlain?: string
 }
 
+// First-run defaults are conservative: the agent has Bash/Write/etc. so we
+// require user approval per tool, with Haiku auto-screening on. Existing
+// users keep whatever they had — the merge in load() preserves their values.
 const DEFAULTS: AppSettings = {
-  permissionMode: 'auto',
-  autoScreen: false
+  permissionMode: 'ask',
+  autoScreen: true
+}
+
+// Listeners notified after settings change so caches that depend on env vars
+// (e.g. screenTool's Anthropic client) can invalidate.
+const changeListeners: Array<() => void> = []
+export function onChange(cb: () => void): () => void {
+  changeListeners.push(cb)
+  return () => {
+    const i = changeListeners.indexOf(cb)
+    if (i >= 0) changeListeners.splice(i, 1)
+  }
 }
 
 let cache: PersistedSettings | null = null
@@ -57,24 +71,41 @@ function decryptKey(s: PersistedSettings): string | null {
   return null
 }
 
+export type KeyStorage = 'encrypted' | 'plaintext' | 'none'
+
+export interface PublicSettings extends AppSettings {
+  gatewayKeySet: boolean
+  keyStorage: KeyStorage
+}
+
 /** Public-facing snapshot — never includes the raw API key. */
-export function get(): AppSettings & { gatewayKeySet: boolean } {
+export function get(): PublicSettings {
   const s = load()
   const { apiKeyEnc, apiKeyPlain, ...publicFields } = s
-  void apiKeyEnc
-  void apiKeyPlain
+  const keyStorage: KeyStorage = apiKeyEnc ? 'encrypted' : apiKeyPlain ? 'plaintext' : 'none'
   return {
     ...DEFAULTS,
     ...publicFields,
-    gatewayKeySet: !!decryptKey(s)
+    gatewayKeySet: keyStorage !== 'none' && !!decryptKey(s),
+    keyStorage
   }
 }
 
+// Whitelist of writable keys — defense against a compromised renderer
+// poisoning arbitrary fields into the persisted file.
+const WRITABLE: ReadonlySet<keyof AppSettings> = new Set([
+  'permissionMode',
+  'autoScreen',
+  'gatewayBaseUrl'
+])
+
 export function set(
   patch: Partial<AppSettings> & { gatewayApiKey?: string | null }
-): AppSettings & { gatewayKeySet: boolean } {
+): PublicSettings {
   const s = load()
-  // Handle key set/clear separately.
+  // Track previous env values so we can clear them when the user clears the key.
+  const hadKey = !!(s.apiKeyEnc || s.apiKeyPlain)
+
   if (patch.gatewayApiKey !== undefined) {
     if (patch.gatewayApiKey === null || patch.gatewayApiKey === '') {
       delete s.apiKeyEnc
@@ -87,12 +118,23 @@ export function set(
       delete s.apiKeyEnc
     }
   }
-  const { gatewayApiKey, ...rest } = patch
-  void gatewayApiKey
-  Object.assign(s, rest)
+  for (const k of Object.keys(patch) as Array<keyof typeof patch>) {
+    if (k === 'gatewayApiKey') continue
+    if (WRITABLE.has(k as keyof AppSettings)) {
+      ;(s as unknown as Record<string, unknown>)[k] = patch[k]
+    }
+  }
   cache = s
+
+  // If the in-app key was cleared, also clear the corresponding env var so
+  // gatewayInfo() correctly reports configured: false. (Otherwise the .env
+  // value lingers in process.env from initial dotenv load.)
+  if (hadKey && !s.apiKeyEnc && !s.apiKeyPlain) {
+    delete process.env.ANTHROPIC_API_KEY
+  }
   persist()
   applyToEnv()
+  for (const cb of changeListeners) cb()
   return get()
 }
 

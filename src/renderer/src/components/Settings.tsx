@@ -72,6 +72,7 @@ function GatewayTab(): React.JSX.Element {
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [keySet, setKeySet] = useState(false)
+  const [keyStorage, setKeyStorage] = useState<'encrypted' | 'plaintext' | 'none'>('none')
   const [showKey, setShowKey] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -81,6 +82,7 @@ function GatewayTab(): React.JSX.Element {
     window.api.appSettings.get().then((s) => {
       setBaseUrl(s.gatewayBaseUrl ?? '')
       setKeySet(s.gatewayKeySet)
+      setKeyStorage(s.keyStorage)
       setLoaded(true)
     })
   }, [])
@@ -94,6 +96,7 @@ function GatewayTab(): React.JSX.Element {
       if (apiKey.length > 0) patch.gatewayApiKey = apiKey
       const next = await window.api.appSettings.set(patch)
       setKeySet(next.gatewayKeySet)
+      setKeyStorage(next.keyStorage)
       setApiKey('')
       setSavedAt(Date.now())
     } finally {
@@ -105,6 +108,7 @@ function GatewayTab(): React.JSX.Element {
     if (!confirm('Clear the saved API key?')) return
     const next = await window.api.appSettings.set({ gatewayApiKey: null })
     setKeySet(next.gatewayKeySet)
+    setKeyStorage(next.keyStorage)
   }
 
   if (!loaded) {
@@ -174,9 +178,19 @@ function GatewayTab(): React.JSX.Element {
           {savedAt && <span className="text-[11px] text-stone">Saved {new Date(savedAt).toLocaleTimeString()}</span>}
         </div>
 
-        <p className="mt-6 text-[11px] text-dusty">
-          The key is encrypted at rest using your OS keychain when available. Linux without a keyring falls back to plaintext storage in your userData dir.
-        </p>
+        {keyStorage === 'plaintext' ? (
+          <div className="mt-6 rounded-[9.6px] border border-terra/40 bg-terra/5 px-4 py-3 text-[12px] text-ink">
+            <strong className="font-medium text-terra">Heads up:</strong> your saved key is in
+            plaintext. Your OS keychain isn't reachable from Electron right now (common on
+            Linux without a keyring service). The file lives in your Portico user-data folder.
+          </div>
+        ) : (
+          <p className="mt-6 text-[11px] text-dusty">
+            {keyStorage === 'encrypted'
+              ? 'Saved key is encrypted via your OS keychain.'
+              : 'Keys are encrypted via your OS keychain when available; plaintext fallback only on systems without a keyring.'}
+          </p>
+        )}
       </div>
     </div>
   )
