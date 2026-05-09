@@ -82,6 +82,57 @@ Things we've decided are worth doing but aren't doing now. Add entries with date
 
 ---
 
+## CI + auto-updates (electron-updater + GitHub Actions)
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Mac auto-updates require code signing (Squirrel.Mac refuses unsigned). We don't have an Apple Developer ID yet, so this is gated on Phase 2 of [RELEASE.md](RELEASE.md). Until then, manual builds + manual distribution are fine for ≤10 internal testers.
+
+**The win:** Tag a commit → CI builds + signs + uploads → users' apps notice the update on next launch and prompt to install. Removes the "DM the new .dmg to everyone" step.
+
+**Design:**
+
+1. Add `electron-updater` dep. ~20 lines in `src/main/index.ts`:
+   ```ts
+   import { autoUpdater } from 'electron-updater'
+   autoUpdater.on('update-downloaded', () => {
+     // Show a non-modal "Restart to apply update" prompt
+   })
+   app.whenReady().then(() => autoUpdater.checkForUpdatesAndNotify())
+   ```
+
+2. `electron-builder.yml` `publish` block (already commented out, ready to enable):
+   ```yaml
+   publish:
+     provider: github
+     owner: <your-github-username>
+     repo: CCD
+   ```
+
+3. `.github/workflows/release.yml` — fires on `v*` tag push:
+   - Mac matrix (arm64 + x64): runs on `macos-latest`, builds + signs + notarizes (env vars from GH secrets), uploads to the Release.
+   - Windows: runs on `windows-latest`, builds + signs.
+   - Linux: optional.
+
+4. GitHub Secrets needed:
+   - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
+   - `CSC_LINK` (base64 of the .p12), `CSC_KEY_PASSWORD`
+   - For Windows: same shape with the Windows cert.
+
+5. `.github/workflows/ci.yml` — fires on PR: `npm run typecheck && npm test`. No build, no signing — fast feedback only.
+
+**What you'd feel:**
+- Tag → 5-10 min later artifacts are live on GitHub Releases.
+- Users see a "Portico has an update" notification on next launch. Click → restart → done.
+- Optional: separate alpha / beta / stable channels via `electron-updater`'s channel concept.
+
+**Pre-req to revisit:**
+1. Apple Developer ID + Authenticode cert (or internal Windows cert) acquired.
+2. Phase 2 of [RELEASE.md](RELEASE.md) used at least once manually so we know signing actually works.
+3. ≥3 active testers asking "when's the new build?" (the actual demand signal).
+
+---
+
 ## Phone remote control (dream)
 
 **Filed:** 2026-05-09

@@ -35,3 +35,12 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+# Distribution channel — when you have signing certs (Phase 2), uncomment the
+# `publish` block below and `electron-builder --publish always` will upload
+# signed artifacts to your GitHub Releases page. Keeps Phase 3 (auto-updates
+# via electron-updater) wire-ready.
+#
+# publish:
+#   provider: github
+#   owner: <your-github-username>
+#   repo: CCD
