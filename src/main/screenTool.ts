@@ -32,7 +32,7 @@ function getClient(): Anthropic {
   return client
 }
 
-function parseVerdict(raw: string): Screening | null {
+export function parseVerdict(raw: string): Screening | null {
   // Tolerate models that wrap JSON in fences despite instructions.
   const jsonMatch = raw.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return null

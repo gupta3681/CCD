@@ -1,8 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join, resolve as pathResolve } from 'path'
-import { homedir } from 'os'
-import { existsSync, statSync } from 'fs'
+import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { isCwdSafe, isExternalSchemeAllowed, isPathRevealable } from './guards'
 import { config as loadDotenv } from 'dotenv'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import icon from '../../resources/icon.png?asset'
@@ -57,30 +56,6 @@ function denyAllPending(reason: string): void {
   }
 }
 
-function isPathRevealable(p: string): boolean {
-  if (typeof p !== 'string' || p.length === 0) return false
-  try {
-    const resolved = pathResolve(p)
-    const userData = app.getPath('userData')
-    return resolved.startsWith(homedir()) || resolved.startsWith(userData)
-  } catch {
-    return false
-  }
-}
-
-function isCwdSafe(p: string | null): p is string {
-  if (typeof p !== 'string' || p.length === 0) return false
-  try {
-    const resolved = pathResolve(p)
-    if (!existsSync(resolved)) return false
-    if (!statSync(resolved).isDirectory()) return false
-    // Allow anything inside HOME. /tmp/system paths are blocked since they're
-    // not what a non-engineer should be agent-ing inside.
-    return resolved.startsWith(homedir())
-  } catch {
-    return false
-  }
-}
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -133,14 +108,6 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
-function isExternalSchemeAllowed(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' || u.protocol === 'http:' || u.protocol === 'mailto:'
-  } catch {
-    return false
-  }
-}
 
 function gatewayInfo(): { gateway: string; configured: boolean; model: string } {
   // Source of truth: in-app settings + env (settings already pushed into env

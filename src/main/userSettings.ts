@@ -27,7 +27,7 @@ export function writeClaudeMd(content: string): { path: string } {
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/
 
-function parseFrontmatter(md: string): Record<string, string> {
+export function parseFrontmatter(md: string): Record<string, string> {
   const m = md.match(FRONTMATTER_RE)
   if (!m) return {}
   const fm: Record<string, string> = {}
@@ -44,7 +44,7 @@ function parseFrontmatter(md: string): Record<string, string> {
   return fm
 }
 
-function isSafeName(name: string): boolean {
+export function isSafeName(name: string): boolean {
   return /^[a-zA-Z0-9._-]+$/.test(name) && !name.startsWith('.')
 }
 
