@@ -20,6 +20,27 @@ const READ_ONLY_TOOLS = [
   'AskUserQuestion'
 ]
 
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+
+const DEFAULT_SYSTEM_APPEND =
+  'You are Portico, a desktop assistant for an internal team. Routed through ' +
+  'the org\'s LLM gateway. Be concise. Prefer answering directly over asking ' +
+  'clarifying questions when the request is unambiguous.'
+
+function modelFor(): string {
+  return process.env.PORTICO_MODEL?.trim() || DEFAULT_MODEL
+}
+
+function systemPromptFor():
+  | string
+  | { type: 'preset'; preset: 'claude_code'; append?: string }
+  | undefined {
+  const override = process.env.PORTICO_SYSTEM_PROMPT?.trim()
+  if (override) return override
+  // Extend Claude Code's built-in agent prompt with a Portico identity line.
+  return { type: 'preset', preset: 'claude_code', append: DEFAULT_SYSTEM_APPEND }
+}
+
 // conversationId (assigned by renderer) -> Agent SDK session_id (captured from
 // the first system.init message). Subsequent queries pass `resume: sessionId`
 // so the agent has memory across turns.
@@ -57,12 +78,13 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
-function gatewayInfo(): { gateway: string; configured: boolean } {
+function gatewayInfo(): { gateway: string; configured: boolean; model: string } {
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? ''
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
-  if (baseUrl.includes('portkey')) return { gateway: 'Portkey', configured: hasKey }
-  if (baseUrl) return { gateway: baseUrl, configured: hasKey }
-  return { gateway: 'Anthropic (direct)', configured: hasKey }
+  const model = modelFor()
+  if (baseUrl.includes('portkey')) return { gateway: 'Portkey', configured: hasKey, model }
+  if (baseUrl) return { gateway: baseUrl, configured: hasKey, model }
+  return { gateway: 'Anthropic (direct)', configured: hasKey, model }
 }
 
 app.whenReady().then(() => {
@@ -92,6 +114,8 @@ app.whenReady().then(() => {
         const result = query({
           prompt,
           options: {
+            model: modelFor(),
+            systemPrompt: systemPromptFor(),
             allowedTools: READ_ONLY_TOOLS,
             permissionMode: 'bypassPermissions',
             ...(resumeId ? { resume: resumeId } : {})

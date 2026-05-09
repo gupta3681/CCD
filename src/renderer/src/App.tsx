@@ -42,7 +42,9 @@ function App(): React.JSX.Element {
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [gateway, setGateway] = useState<{ gateway: string; configured: boolean } | null>(null)
+  const [gateway, setGateway] = useState<{ gateway: string; configured: boolean; model: string } | null>(
+    null
+  )
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID())
   const scrollerRef = useRef<HTMLDivElement>(null)
 
@@ -119,7 +121,7 @@ function App(): React.JSX.Element {
                 }`}
               />
               <span>
-                {gateway.gateway}
+                {gateway.gateway} · {gateway.model}
                 {gateway.configured ? '' : ' · not configured'}
               </span>
             </div>

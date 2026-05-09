@@ -4,7 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 type Disposer = () => void
 
 const api = {
-  gatewayInfo: (): Promise<{ gateway: string; configured: boolean }> =>
+  gatewayInfo: (): Promise<{ gateway: string; configured: boolean; model: string }> =>
     ipcRenderer.invoke('gateway:info'),
 
   query: (prompt: string, runId: string, conversationId: string): Promise<void> =>
