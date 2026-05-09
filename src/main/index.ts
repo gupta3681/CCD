@@ -262,11 +262,11 @@ app.whenReady().then(() => {
             includePartialMessages: true,
             abortController: controller,
             settingSources,
-            // We persist conversations ourselves (conversations.json). Disable
-            // the SDK's parallel JSONL dump under ~/.claude/projects/ to avoid
-            // duplicating disk writes and to shrink the leak surface for
-            // potentially sensitive prompts.
-            persistSession: false,
+            // Keep SDK persistence on. We have our own conversations.json for
+            // titles / sidebar listing / decisions / trust flag — but the SDK
+            // needs its session JSONL on disk for `resume: sessionId` to work,
+            // which is how we get multi-turn memory across messages. Turning
+            // this off breaks memory.
             ...(cwd ? { cwd } : {}),
             ...(askMode
               ? {
