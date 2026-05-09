@@ -3,6 +3,27 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 type Disposer = () => void
 
+export interface Bubble {
+  id: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  text: string
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  updatedAt: number
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  sessionId: string | null
+  bubbles: Bubble[]
+}
+
 const api = {
   gatewayInfo: (): Promise<{ gateway: string; configured: boolean; model: string }> =>
     ipcRenderer.invoke('gateway:info'),
@@ -10,8 +31,15 @@ const api = {
   query: (prompt: string, runId: string, conversationId: string): Promise<void> =>
     ipcRenderer.invoke('agent:query', prompt, runId, conversationId),
 
-  resetConversation: (conversationId: string): Promise<void> =>
-    ipcRenderer.invoke('conversation:reset', conversationId),
+  conversations: {
+    list: (): Promise<ConversationSummary[]> => ipcRenderer.invoke('conversations:list'),
+    get: (id: string): Promise<Conversation | null> => ipcRenderer.invoke('conversations:get', id),
+    save: (id: string, bubbles: Bubble[]): Promise<ConversationSummary> =>
+      ipcRenderer.invoke('conversations:save', id, bubbles),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('conversations:delete', id),
+    rename: (id: string, title: string): Promise<void> =>
+      ipcRenderer.invoke('conversations:rename', id, title)
+  },
 
   onMessage: (cb: (runId: string, message: unknown) => void): Disposer => {
     const handler = (_e: unknown, payload: { runId: string; payload: unknown }): void =>
@@ -27,8 +55,10 @@ const api = {
   },
 
   onError: (cb: (runId: string, error: { message: string }) => void): Disposer => {
-    const handler = (_e: unknown, payload: { runId: string; payload: { message: string } }): void =>
-      cb(payload.runId, payload.payload)
+    const handler = (
+      _e: unknown,
+      payload: { runId: string; payload: { message: string } }
+    ): void => cb(payload.runId, payload.payload)
     ipcRenderer.on('agent:error', handler)
     return () => ipcRenderer.off('agent:error', handler)
   }

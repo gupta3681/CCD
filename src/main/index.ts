@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { config as loadDotenv } from 'dotenv'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import icon from '../../resources/icon.png?asset'
+import * as conversations from './conversations'
 
 loadDotenv()
 
@@ -24,7 +25,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 const DEFAULT_SYSTEM_APPEND =
   'You are Portico, a desktop assistant for an internal team. Routed through ' +
-  'the org\'s LLM gateway. Be concise. Prefer answering directly over asking ' +
+  "the org's LLM gateway. Be concise. Prefer answering directly over asking " +
   'clarifying questions when the request is unambiguous.'
 
 function modelFor(): string {
@@ -37,19 +38,13 @@ function systemPromptFor():
   | undefined {
   const override = process.env.PORTICO_SYSTEM_PROMPT?.trim()
   if (override) return override
-  // Extend Claude Code's built-in agent prompt with a Portico identity line.
   return { type: 'preset', preset: 'claude_code', append: DEFAULT_SYSTEM_APPEND }
 }
 
-// conversationId (assigned by renderer) -> Agent SDK session_id (captured from
-// the first system.init message). Subsequent queries pass `resume: sessionId`
-// so the agent has memory across turns.
-const sessionByConversation = new Map<string, string>()
-
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
+    width: 1200,
+    height: 800,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
@@ -96,10 +91,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle('gateway:info', () => gatewayInfo())
 
-  ipcMain.handle('conversation:reset', (_e, conversationId: string) => {
-    sessionByConversation.delete(conversationId)
-  })
+  // ── Conversations ─────────────────────────────────────────────────────
+  ipcMain.handle('conversations:list', () => conversations.list())
+  ipcMain.handle('conversations:get', (_e, id: string) => conversations.get(id))
+  ipcMain.handle('conversations:save', (_e, id: string, bubbles: conversations.Bubble[]) =>
+    conversations.save(id, bubbles)
+  )
+  ipcMain.handle('conversations:delete', (_e, id: string) => conversations.remove(id))
+  ipcMain.handle('conversations:rename', (_e, id: string, title: string) =>
+    conversations.rename(id, title)
+  )
 
+  // ── Agent query ───────────────────────────────────────────────────────
   ipcMain.handle(
     'agent:query',
     async (event, prompt: string, runId: string, conversationId: string) => {
@@ -108,7 +111,7 @@ app.whenReady().then(() => {
         if (!sender.isDestroyed()) sender.send(channel, { runId, payload })
       }
 
-      const resumeId = sessionByConversation.get(conversationId)
+      const resumeId = conversations.getSessionId(conversationId)
 
       try {
         const result = query({
@@ -123,21 +126,22 @@ app.whenReady().then(() => {
         })
 
         for await (const message of result) {
-          // Capture session_id on the first init message of a brand new conversation.
           if (
             !resumeId &&
             (message as { type?: string }).type === 'system' &&
             (message as { subtype?: string }).subtype === 'init'
           ) {
             const sid = (message as { session_id?: string }).session_id
-            if (sid) sessionByConversation.set(conversationId, sid)
+            if (sid) conversations.setSessionId(conversationId, sid)
           }
           send('agent:message', message)
         }
         send('agent:done', null)
       } catch (err) {
         const error =
-          err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) }
+          err instanceof Error
+            ? { message: err.message, stack: err.stack }
+            : { message: String(err) }
         send('agent:error', error)
       }
     }
