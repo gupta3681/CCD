@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../preload'
 
-type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills'
+type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills' | 'advanced'
 
 export function Settings({
   onClose,
@@ -39,6 +39,7 @@ export function Settings({
           <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} label="Memory" hint="CLAUDE.md — about you" />
           <TabBtn active={tab === 'soul'} onClick={() => setTab('soul')} label="Soul" hint="soul.md — how to respond" />
           <TabBtn active={tab === 'skills'} onClick={() => setTab('skills')} label="Skills" hint="~/.claude/skills" />
+          <TabBtn active={tab === 'advanced'} onClick={() => setTab('advanced')} label="Advanced" hint="Logs · diagnostics" />
         </nav>
 
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -47,6 +48,7 @@ export function Settings({
           {tab === 'memory' && <MemoryTab />}
           {tab === 'soul' && <SoulTab onRerunPersonaWizard={onRerunPersonaWizard} />}
           {tab === 'skills' && <SkillsTab />}
+          {tab === 'advanced' && <AdvancedTab />}
         </div>
       </div>
     </div>
@@ -668,6 +670,158 @@ function SkillsTab(): React.JSX.Element {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Advanced tab — diagnostics + log viewer
+// ─────────────────────────────────────────────────────────────────────────
+
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+interface LogEntry {
+  ts: number
+  level: LogLevel
+  source: string
+  message: string
+  meta?: Record<string, unknown>
+}
+
+function AdvancedTab(): React.JSX.Element {
+  const [entries, setEntries] = useState<LogEntry[]>([])
+  const [paths, setPaths] = useState<{ dir: string; currentFile: string } | null>(null)
+  const [autoscroll, setAutoscroll] = useState(true)
+  const [filter, setFilter] = useState<LogLevel | 'all'>('all')
+
+  useEffect(() => {
+    window.api.logs.recent().then(setEntries)
+    window.api.logs.paths().then(setPaths)
+    const off = window.api.logs.onAppended((e) => {
+      setEntries((prev) => {
+        const next = [...prev, e]
+        return next.length > 500 ? next.slice(-500) : next
+      })
+    })
+    return off
+  }, [])
+
+  const visible = filter === 'all' ? entries : entries.filter((e) => e.level === filter)
+
+  function copyAll(): void {
+    const text = entries
+      .map((e) => {
+        const t = new Date(e.ts).toISOString()
+        const meta = e.meta ? ` ${JSON.stringify(e.meta)}` : ''
+        return `${t} [${e.level.toUpperCase()}] ${e.source}: ${e.message}${meta}`
+      })
+      .join('\n')
+    navigator.clipboard.writeText(text)
+  }
+
+  async function clear(): Promise<void> {
+    await window.api.logs.clear()
+    setEntries([])
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex items-center justify-between border-b border-parchment px-6 py-3">
+        <div>
+          <div className="text-[13px] text-ink">Diagnostics</div>
+          {paths && (
+            <div className="text-[11px] text-dusty">
+              Log file: <code className="font-mono">{paths.currentFile}</code>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as LogLevel | 'all')}
+            className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink"
+          >
+            <option value="all">All levels</option>
+            <option value="debug">Debug</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+          </select>
+          <label className="flex items-center gap-1 text-[11px] text-graphite">
+            <input
+              type="checkbox"
+              checked={autoscroll}
+              onChange={(e) => setAutoscroll(e.target.checked)}
+              className="accent-ink"
+            />
+            Autoscroll
+          </label>
+          <button
+            onClick={() => paths && window.api.shell.revealPath(paths.currentFile)}
+            disabled={!paths}
+            className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink hover:border-onyx/30 disabled:opacity-40"
+          >
+            Reveal
+          </button>
+          <button
+            onClick={copyAll}
+            className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink hover:border-onyx/30"
+          >
+            Copy all
+          </button>
+          <button
+            onClick={clear}
+            className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink hover:border-onyx/30"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+      <LogList entries={visible} autoscroll={autoscroll} />
+    </div>
+  )
+}
+
+function LogList({ entries, autoscroll }: { entries: LogEntry[]; autoscroll: boolean }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (autoscroll && ref.current) ref.current.scrollTop = ref.current.scrollHeight
+  }, [entries, autoscroll])
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-[12px] text-stone">
+        No log entries yet.
+      </div>
+    )
+  }
+
+  return (
+    <div ref={ref} className="flex-1 overflow-auto bg-snow font-mono text-[12px] leading-[1.5]">
+      {entries.map((e, i) => (
+        <LogRow key={i} entry={e} />
+      ))}
+    </div>
+  )
+}
+
+function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
+  const tone =
+    entry.level === 'error'
+      ? 'text-terra'
+      : entry.level === 'warn'
+        ? 'text-[#7a5d2e]'
+        : entry.level === 'debug'
+          ? 'text-stone'
+          : 'text-graphite'
+  const time = new Date(entry.ts).toLocaleTimeString('en-US', { hour12: false })
+  const meta = entry.meta ? ' ' + JSON.stringify(entry.meta) : ''
+  return (
+    <div className="border-b border-parchment/40 px-6 py-1.5">
+      <span className="text-stone">{time}</span>{' '}
+      <span className={`uppercase ${tone}`}>{entry.level.padEnd(5)}</span>{' '}
+      <span className="text-dusty">{entry.source.padEnd(12)}</span>{' '}
+      <span className="text-ink">{entry.message}</span>
+      {entry.meta && <span className="text-stone">{meta}</span>}
     </div>
   )
 }

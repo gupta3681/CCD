@@ -9,6 +9,7 @@ import * as conversations from './conversations'
 import * as userSettings from './userSettings'
 import * as appSettings from './appSettings'
 import { screenTool, type Screening } from './screenTool'
+import { log, logBootInfo, recent as recentLogs, clearRing, paths as logPaths } from './logger'
 
 loadDotenv()
 
@@ -176,12 +177,18 @@ app.whenReady().then(() => {
   // App settings override .env. Apply on startup so the SDK + screen client
   // see the user's in-app gateway config from the first request.
   appSettings.applyToEnv()
+  logBootInfo()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
   ipcMain.handle('gateway:info', () => gatewayInfo())
+
+  // ── Logs ──────────────────────────────────────────────────────────────
+  ipcMain.handle('logs:recent', (_e, limit?: number) => recentLogs(limit))
+  ipcMain.handle('logs:clear', () => clearRing())
+  ipcMain.handle('logs:paths', () => logPaths())
 
   ipcMain.handle('agent:cancel', (_e, runId: string) => {
     const ar = activeRuns.get(runId)
@@ -304,6 +311,16 @@ app.whenReady().then(() => {
       const cwd = storedCwd && isCwdSafe(storedCwd) ? storedCwd : undefined
       const trustProject = !!cwd && conversations.getTrustProject(conversationId)
 
+      log.info('agent', 'query started', {
+        runId,
+        conversationId,
+        model: modelFor(),
+        cwd: cwd ?? '(none)',
+        trustProject,
+        resuming: !!resumeId,
+        promptChars: prompt.length
+      })
+
       // If the previous turn was stopped by the user, give the model a tiny
       // heads-up so it doesn't pick up as if nothing happened.
       let effectivePrompt = prompt
@@ -404,6 +421,7 @@ app.whenReady().then(() => {
         send('agent:done', null)
       } catch (err) {
         if (controller.signal.aborted) {
+          log.info('agent', 'query cancelled by user', { runId })
           send('agent:cancelled', null)
           send('agent:done', null) // user-initiated stop, not a real error
         } else {
@@ -411,6 +429,7 @@ app.whenReady().then(() => {
             err instanceof Error
               ? { message: err.message, stack: err.stack }
               : { message: String(err) }
+          log.error('agent', 'query failed', { runId, error: error.message })
           send('agent:error', error)
         }
       } finally {

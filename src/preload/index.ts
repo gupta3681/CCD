@@ -71,6 +71,36 @@ const api = {
     return () => ipcRenderer.off('permission:screening', handler)
   },
 
+  logs: {
+    recent: (limit?: number): Promise<
+      Array<{ ts: number; level: 'debug' | 'info' | 'warn' | 'error'; source: string; message: string; meta?: Record<string, unknown> }>
+    > => ipcRenderer.invoke('logs:recent', limit),
+    clear: (): Promise<void> => ipcRenderer.invoke('logs:clear'),
+    paths: (): Promise<{ dir: string; currentFile: string }> => ipcRenderer.invoke('logs:paths'),
+    onAppended: (
+      cb: (entry: {
+        ts: number
+        level: 'debug' | 'info' | 'warn' | 'error'
+        source: string
+        message: string
+        meta?: Record<string, unknown>
+      }) => void
+    ): Disposer => {
+      const handler = (
+        _e: unknown,
+        entry: {
+          ts: number
+          level: 'debug' | 'info' | 'warn' | 'error'
+          source: string
+          message: string
+          meta?: Record<string, unknown>
+        }
+      ): void => cb(entry)
+      ipcRenderer.on('logs:appended', handler)
+      return () => ipcRenderer.off('logs:appended', handler)
+    }
+  },
+
   settings: {
     paths: (): Promise<SettingsPaths> => ipcRenderer.invoke('settings:paths'),
     claudeMd: {
