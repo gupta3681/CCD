@@ -37,9 +37,7 @@ function extractText(msg: SDKMessage): { role: Role; text: string } | null {
       .join('')
     return text ? { role: 'tool', text } : null
   }
-  if (msg.type === 'result' && msg.result) {
-    return { role: 'assistant', text: msg.result }
-  }
+  // Intentionally ignore msg.type === 'result' — it duplicates the final assistant turn.
   return null
 }
 
