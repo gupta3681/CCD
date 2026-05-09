@@ -24,6 +24,7 @@ mac:
     - NSDocumentsFolderUsageDescription: Portico accesses files you ask it to.
     - NSDownloadsFolderUsageDescription: Portico accesses files you ask it to.
   notarize: false
+afterSign: build/after-sign.js
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
