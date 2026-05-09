@@ -426,7 +426,9 @@ app.whenReady().then(() => {
           }
         })
 
+        let messageCount = 0
         for await (const message of result) {
+          messageCount++
           if (
             !resumeId &&
             (message as { type?: string }).type === 'system' &&
@@ -437,6 +439,7 @@ app.whenReady().then(() => {
           }
           send('agent:message', message)
         }
+        log.info('agent', 'query completed', { runId, messageCount })
         send('agent:done', null)
       } catch (err) {
         const ar = activeRuns.get(runId)
