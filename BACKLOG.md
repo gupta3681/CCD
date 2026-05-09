@@ -52,3 +52,64 @@ Things we've decided are worth doing but aren't doing now. Add entries with date
 **Pre-req to revisit:** Apple Developer ID acquired (so we can sign + notarize the bundle including the embedded Node binaries) AND a concrete user request for an MCP that requires `npx`.
 
 ---
+
+## Routines (scheduled local prompts)
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Not blocking V1. Pairs better with the permission UI being battle-tested first — running prompts unattended needs trust in the screening + approval flow, which is brand new.
+
+**The win:** "Run this prompt every weekday at 9am against this folder." Saved prompt + cron-ish schedule + folder. Each run becomes a normal Conversation in the sidebar so you can scroll back through the history. Natural use cases: daily commit review, weekly retro draft, end-of-day timesheet pre-fill.
+
+**Design:**
+- New `<userData>/portico/routines.json` (atomic write, same pattern as conversations/settings). Schema per routine: `{ id, name, description, prompt, cwd, schedule, permissionMode, lastRunAt, lastRunConversationId, enabled }`. Schedule is one of `manual | hourly | { type: 'daily', at: 'HH:MM' } | { type: 'weekdays', at } | { type: 'weekly', day, at }`.
+- Scheduler in main: at app start, set timers per enabled routine. When a timer fires, call the existing `agent:query` handler with the routine's saved cwd + prompt + permission mode, generating a fresh conversationId tagged `routine:<id>`.
+- New sidebar entry "Routines" → list view + create/edit form (matches Cowork's screenshot the user sent on 2026-05-09). Reuses the existing folder-picker, permission-mode picker, and trustProject toggle.
+- Output: each run is a normal Conversation, visible in Recents with a small "↻ daily-code-review" badge. Click to read the result.
+- Notifications: optional Electron `Notification` on completion ("Daily review · 3 risky patterns flagged"), click-to-open.
+- Login-on-startup: `app.setLoginItemSettings({ openAtLogin: true })` — opt-in via Settings → Routines.
+
+**What you'd feel:**
+- Sidebar gains a Routines section (above Recents).
+- Settings → Routines tab: "Open Portico when I log in" toggle.
+- A new permission-mode default for routines: **strict ask + auto-screen** (since you're not watching). Or "auto-approve only Safe verdicts" using the existing Haiku screener — would need a small `permissionMode: 'autoApproveSafeOnly'` shim that auto-allows when screening returns SAFE and prompts otherwise.
+
+**Honest caveats:**
+- "Only runs while computer is awake" — true. macOS sleep kills the timer. For true cron behavior across sleep, need a server-side runner (out of scope until phone-control or v2).
+- Timezone handling — store schedule in user-local time, recompute next-run on app start.
+
+**Pre-req to revisit:** Permission UI used by ~5+ real users for ~2 weeks without surprises. Then we know "auto-approve safe verdicts" is trustworthy enough to run unattended.
+
+---
+
+## Phone remote control (dream)
+
+**Filed:** 2026-05-09
+
+**Status:** Dream — would change the product shape. Real design doc required before any code.
+
+**Why now is very wrong:** Multi-week build. Touches auth, transport, mobile UI, and (if done well) a hosted relay. Gets meaningful only after Routines (which is the forcing function for "the app does work without me watching anyway"). Anthropic may also ship something native that obviates parts of this — worth waiting to see.
+
+**The vision:** Open Portico on your phone. See your conversations. Type a prompt. Watch the agent stream. Approve/deny tool calls from your pocket. Useful when you're away from your laptop but your laptop is running a long task ("how's that refactor going?") or you want to kick off a routine ad-hoc ("run the daily review now").
+
+**Three architectural paths considered:**
+
+- **A. LAN-only** (~1 week). WebSocket server in main; QR-code pairing; phone connects on same WiFi. Cheap, private, useless when off-network.
+- **B. LAN + relay tunnel** (~3 weeks, the right answer). LAN first, fall back to a small relay (Cloudflare Worker / Vercel Function) when phone is off-network. End-to-end encrypted with the pairing-derived key — relay sees ciphertext only.
+- **C. Move agent to cloud** (~quarter, the wrong answer). Kills Portico's local-files / local-MCP identity. Becomes a thin client over hosted infrastructure. That's what Anthropic's hosted Claude is.
+
+**Recommended path: B.** Phone is a **PWA**, not a native app — single codebase, works on iOS Safari + Android Chrome, installable to home screen, no App Store. Auth via QR-code pairing. Long-lived session credential, revokable from Portico settings. UI is a stripped chat surface + permission prompts.
+
+**Hard constraints:**
+- The laptop must be awake. macOS sleep = no agent. Until we have a server-side execution path, "remote control" means "remote control of my laptop."
+- Notarization story for the relay component (if self-hosted) — not Mac-related but still a real ops surface.
+- Real privacy / threat model — what happens if the pairing token leaks? Relay credential rotation? Audit log of "what did my phone do while I was away?"
+
+**Pre-req to revisit:**
+1. Routines is shipped and used.
+2. There's at least one concrete user (Binil-class) saying "I want to do X from my phone" with a real X.
+3. Anthropic has not shipped a native equivalent in the meantime.
+
+When all three are true, write a design doc before any code.
+
+---
