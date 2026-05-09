@@ -45,11 +45,23 @@ interface SDKMessage {
       is_error?: boolean
       tool_use_id?: string
     }>
+    // Anthropic API usage. Available on assistant messages. input_tokens is
+    // the current context window size at the moment this message was produced.
+    usage?: {
+      input_tokens?: number
+      output_tokens?: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
   }
   event?: StreamEvent
   result?: string
   subtype?: string
 }
+
+// All current Claude models default to a 200k context window. (Sonnet 4.6
+// supports 1M via the context-1m beta header, which we don't currently enable.)
+const CONTEXT_WINDOW_MAX = 200_000
 
 function extractToolResultText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -104,6 +116,7 @@ function App(): React.JSX.Element {
   const [view, setView] = useState<'chat' | 'settings'>('chat')
   const [cwd, setCwd] = useState<string | null>(null)
   const [trustProject, setTrustProject] = useState<boolean>(false)
+  const [contextTokens, setContextTokens] = useState<number | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Tracks the SDK message.id of the assistant turn currently being streamed,
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
@@ -219,8 +232,17 @@ function App(): React.JSX.Element {
         return
       }
 
-      // Full assistant messages also arrive when streaming; they duplicate what the
-      // stream events already built. Ignore.
+      // Assistant messages duplicate the streamed content (we already built
+      // bubbles from stream_event), so we don't render them. But they DO carry
+      // the canonical usage block — so use them to track context window size.
+      if (msg.type === 'assistant' && msg.message?.usage) {
+        const u = msg.message.usage
+        const inputs =
+          (u.input_tokens ?? 0) +
+          (u.cache_creation_input_tokens ?? 0) +
+          (u.cache_read_input_tokens ?? 0)
+        if (inputs > 0) setContextTokens(inputs)
+      }
     })
 
     const offScreening = window.api.onPermissionScreening((s) => {
@@ -337,6 +359,7 @@ function App(): React.JSX.Element {
     setBubbles([])
     setCwd(null)
     setTrustProject(false)
+    setContextTokens(null)
     loadedBubblesRef.current = null
   }
 
@@ -351,6 +374,8 @@ function App(): React.JSX.Element {
     loadedBubblesRef.current = conv.bubbles
     setCwd(conv.cwd ?? null)
     setTrustProject(!!conv.trustProject)
+    // Reset until the next assistant message tells us actual usage.
+    setContextTokens(null)
   }
 
   async function deleteSession(id: string): Promise<void> {
@@ -360,6 +385,7 @@ function App(): React.JSX.Element {
       setBubbles([])
       setCwd(null)
       setTrustProject(false)
+      setContextTokens(null)
       loadedBubblesRef.current = null
     }
     refreshList()
@@ -484,34 +510,39 @@ function App(): React.JSX.Element {
         </div>
 
         <div className="border-t border-parchment bg-vellum px-6 py-4">
-          <div className="mx-auto flex max-w-[760px] items-end gap-3">
-            <textarea
-              className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
-              placeholder="Ask anything…  (Enter to send, Shift+Enter for newline)"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              rows={2}
-              disabled={busy}
-            />
-            {busy ? (
-              <button
-                onClick={stop}
-                className="flex h-[52px] items-center gap-2 rounded-[9.6px] border border-onyx/20 bg-snow px-5 text-[15px] font-medium text-ink transition-opacity hover:bg-vellum"
-                title="Stop generating"
-              >
-                <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-ink" />
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={send}
-                disabled={!input.trim()}
-                className="h-[52px] rounded-[9.6px] bg-ink px-5 text-[15px] font-medium text-snow transition-opacity hover:opacity-90 disabled:opacity-40"
-              >
-                Send
-              </button>
-            )}
+          <div className="mx-auto flex max-w-[760px] flex-col gap-1">
+            <div className="flex items-end gap-3">
+              <textarea
+                className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
+                placeholder="Ask anything…  (Enter to send, Shift+Enter for newline)"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+                rows={2}
+                disabled={busy}
+              />
+              {busy ? (
+                <button
+                  onClick={stop}
+                  className="flex h-[52px] items-center gap-2 rounded-[9.6px] border border-onyx/20 bg-snow px-5 text-[15px] font-medium text-ink transition-opacity hover:bg-vellum"
+                  title="Stop generating"
+                >
+                  <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-ink" />
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={send}
+                  disabled={!input.trim()}
+                  className="h-[52px] rounded-[9.6px] bg-ink px-5 text-[15px] font-medium text-snow transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  Send
+                </button>
+              )}
+            </div>
+            <div className="mt-1 flex justify-end">
+              <ContextMeter tokens={contextTokens} max={CONTEXT_WINDOW_MAX} model={gateway?.model} />
+            </div>
           </div>
         </div>
       </div>
@@ -531,6 +562,64 @@ function App(): React.JSX.Element {
       )}
     </div>
   )
+}
+
+function ContextMeter({
+  tokens,
+  max,
+  model
+}: {
+  tokens: number | null
+  max: number
+  model: string | undefined
+}): React.JSX.Element {
+  const used = tokens ?? 0
+  const pct = Math.min(1, used / max)
+  // arc from 0 -> circumference based on pct
+  const r = 7
+  const c = 2 * Math.PI * r
+  const dash = c * pct
+  const colorClass = pct >= 0.85 ? 'text-terra' : pct >= 0.6 ? 'text-[#b89456]' : 'text-graphite'
+
+  const tooltip = tokens == null
+    ? 'Context window — fills up after the first reply.'
+    : `${formatTokens(used)} / ${formatTokens(max)} (${Math.round(pct * 100)}%)${
+        model ? ` · ${model}` : ''
+      }`
+
+  return (
+    <div
+      className="flex items-center gap-1.5 text-[10.5px] text-dusty"
+      title={tooltip}
+    >
+      <span>
+        {tokens == null ? '—' : `${formatTokens(used)} / ${formatTokens(max)}`}
+      </span>
+      <svg width="18" height="18" viewBox="0 0 18 18" className={colorClass}>
+        <circle cx="9" cy="9" r={r} stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" fill="none" />
+        <circle
+          cx="9"
+          cy="9"
+          r={r}
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+          strokeDasharray={`${dash} ${c}`}
+          strokeLinecap="round"
+          transform="rotate(-90 9 9)"
+          style={{ transition: 'stroke-dasharray 0.4s ease' }}
+        />
+      </svg>
+    </div>
+  )
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 10_000) return `${(n / 1000).toFixed(2)}k`
+  if (n < 100_000) return `${(n / 1000).toFixed(1)}k`
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`
+  return `${(n / 1_000_000).toFixed(2)}M`
 }
 
 export default App
