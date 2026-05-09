@@ -1,36 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
-import type { Bubble, ConversationSummary } from '../../preload'
+import { BubbleView } from './components/BubbleView'
+import type { Block, Bubble, ConversationSummary } from '../../preload'
+
+// SDK partial-message stream events (see Anthropic SDK BetaRawMessageStreamEvent).
+type StreamEvent =
+  | { type: 'message_start'; message: { id: string } }
+  | {
+      type: 'content_block_start'
+      index: number
+      content_block:
+        | { type: 'text'; text?: string }
+        | { type: 'thinking'; thinking?: string }
+        | { type: 'tool_use'; id: string; name: string; input?: unknown }
+    }
+  | {
+      type: 'content_block_delta'
+      index: number
+      delta:
+        | { type: 'text_delta'; text: string }
+        | { type: 'thinking_delta'; thinking: string }
+        | { type: 'input_json_delta'; partial_json: string }
+        | { type: 'signature_delta'; signature: string }
+    }
+  | { type: 'content_block_stop'; index: number }
+  | { type: 'message_delta' }
+  | { type: 'message_stop' }
 
 interface SDKMessage {
   type: string
+  uuid?: string
   message?: {
+    id?: string
     content?: Array<{ type: string; text?: string; name?: string; input?: unknown }>
   }
+  event?: StreamEvent
   result?: string
   subtype?: string
-}
-
-function extractText(msg: SDKMessage): { role: Bubble['role']; text: string } | null {
-  if (msg.type === 'assistant' && msg.message?.content) {
-    const text = msg.message.content
-      .map((b) => {
-        if (b.type === 'text') return b.text ?? ''
-        if (b.type === 'tool_use') return `\n→ ${b.name}(${JSON.stringify(b.input)})\n`
-        return ''
-      })
-      .join('')
-    return text ? { role: 'assistant', text } : null
-  }
-  if (msg.type === 'user' && msg.message?.content) {
-    const text = msg.message.content
-      .map((b) => (b.type === 'tool_result' ? `← tool result` : ''))
-      .join('')
-    return text ? { role: 'tool', text } : null
-  }
-  return null
 }
 
 function App(): React.JSX.Element {
@@ -45,26 +51,110 @@ function App(): React.JSX.Element {
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
   const scrollerRef = useRef<HTMLDivElement>(null)
 
-  // Refresh sidebar list from disk
+  // Tracks the in-flight assistant bubble id per run so deltas know where to land.
+  const inFlightBubbleIdRef = useRef<Map<string, string>>(new Map())
+
   const refreshList = useCallback(async () => {
     const list = await window.api.conversations.list()
     setConversations(list)
   }, [])
 
-  // Initial load
+  // Apply a stream_event into the current bubble list.
+  const applyStreamEvent = useCallback((runId: string, ev: StreamEvent) => {
+    setBubbles((prev) => {
+      let nextBubbles = prev
+      const existingId = inFlightBubbleIdRef.current.get(runId)
+
+      // Make sure we have an in-flight assistant bubble for this run.
+      let bubbleId = existingId
+      if (!bubbleId) {
+        if (ev.type !== 'message_start' && ev.type !== 'content_block_start') return prev
+        bubbleId = `${runId}-a`
+        inFlightBubbleIdRef.current.set(runId, bubbleId)
+        nextBubbles = [...nextBubbles, { id: bubbleId, role: 'assistant', blocks: [] }]
+      }
+
+      const idx = nextBubbles.findIndex((b) => b.id === bubbleId)
+      if (idx === -1) return nextBubbles
+      const bubble = nextBubbles[idx]
+      const blocks = [...(bubble.blocks ?? [])]
+
+      if (ev.type === 'content_block_start') {
+        const cb = ev.content_block
+        const newBlock: Block | null =
+          cb.type === 'text'
+            ? { type: 'text', text: cb.text ?? '' }
+            : cb.type === 'thinking'
+              ? { type: 'thinking', thinking: cb.thinking ?? '' }
+              : cb.type === 'tool_use'
+                ? { type: 'tool_use', name: cb.name, input: cb.input ?? {} }
+                : null
+        if (!newBlock) return nextBubbles
+        blocks[ev.index] = newBlock
+      } else if (ev.type === 'content_block_delta') {
+        const existing = blocks[ev.index]
+        if (!existing) return nextBubbles
+        const d = ev.delta
+        if (d.type === 'text_delta' && existing.type === 'text') {
+          blocks[ev.index] = { ...existing, text: existing.text + d.text }
+        } else if (d.type === 'thinking_delta' && existing.type === 'thinking') {
+          blocks[ev.index] = { ...existing, thinking: existing.thinking + d.thinking }
+        }
+        // input_json_delta and signature_delta are intentionally ignored for V1.
+      } else {
+        return nextBubbles
+      }
+
+      nextBubbles = [...nextBubbles]
+      nextBubbles[idx] = { ...bubble, blocks }
+      return nextBubbles
+    })
+  }, [])
+
   useEffect(() => {
     window.api.gatewayInfo().then(setGateway)
     refreshList()
 
     const offMsg = window.api.onMessage((runId, raw) => {
       const msg = raw as SDKMessage
-      const piece = extractText(msg)
-      if (!piece) return
-      setBubbles((prev) => [...prev, { id: `${runId}-${prev.length}`, role: piece.role, text: piece.text }])
+
+      // Streaming path
+      if (msg.type === 'stream_event' && msg.event) {
+        applyStreamEvent(runId, msg.event)
+        return
+      }
+
+      // Tool results from the agent loop appear as user messages with tool_result content.
+      if (msg.type === 'user' && msg.message?.content) {
+        const text = msg.message.content
+          .map((b) => (b.type === 'tool_result' ? `← tool result` : ''))
+          .join('')
+        if (!text) return
+        setBubbles((prev) => [
+          ...prev,
+          { id: `${runId}-tr-${prev.length}`, role: 'tool', blocks: [{ type: 'tool_result', text }] }
+        ])
+        return
+      }
+
+      // Full assistant messages also arrive when streaming; they duplicate what the
+      // stream events already built. Ignore.
     })
-    const offDone = window.api.onDone(() => setBusy(false))
+
+    const offDone = window.api.onDone((runId) => {
+      inFlightBubbleIdRef.current.delete(runId)
+      setBusy(false)
+    })
     const offErr = window.api.onError((runId, err) => {
-      setBubbles((prev) => [...prev, { id: `${runId}-err`, role: 'system', text: `Error: ${err.message}` }])
+      inFlightBubbleIdRef.current.delete(runId)
+      setBubbles((prev) => [
+        ...prev,
+        {
+          id: `${runId}-err`,
+          role: 'system',
+          blocks: [{ type: 'text', text: `Error: ${err.message}` }]
+        }
+      ])
       setBusy(false)
     })
 
@@ -73,27 +163,19 @@ function App(): React.JSX.Element {
       offDone()
       offErr()
     }
-  }, [refreshList])
+  }, [refreshList, applyStreamEvent])
 
-  // Auto-scroll on new bubble
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: 'smooth' })
   }, [bubbles])
 
-  // Persist bubbles whenever they change (debounced via setTimeout in effect cleanup)
-  const lastSavedConvIdRef = useRef<string | null>(null)
+  // Persist whenever bubbles settle (debounced 400ms — covers token-streaming bursts).
   useEffect(() => {
     if (bubbles.length === 0) return
     const t = setTimeout(async () => {
       await window.api.conversations.save(conversationId, bubbles)
-      // Only refresh sidebar list when conversation identity changes or this is the first save
-      if (lastSavedConvIdRef.current !== conversationId) {
-        lastSavedConvIdRef.current = conversationId
-        refreshList()
-      } else {
-        refreshList()
-      }
-    }, 250)
+      refreshList()
+    }, 400)
     return () => clearTimeout(t)
   }, [bubbles, conversationId, refreshList])
 
@@ -101,7 +183,10 @@ function App(): React.JSX.Element {
     const prompt = input.trim()
     if (!prompt || busy) return
     const runId = crypto.randomUUID()
-    setBubbles((prev) => [...prev, { id: `${runId}-u`, role: 'user', text: prompt }])
+    setBubbles((prev) => [
+      ...prev,
+      { id: `${runId}-u`, role: 'user', blocks: [{ type: 'text', text: prompt }] }
+    ])
     setInput('')
     setBusy(true)
     await window.api.query(prompt, runId, conversationId)
@@ -119,7 +204,6 @@ function App(): React.JSX.Element {
     if (!conv) return
     setConversationId(id)
     setBubbles(conv.bubbles)
-    lastSavedConvIdRef.current = id
   }
 
   async function deleteSession(id: string): Promise<void> {
@@ -214,40 +298,6 @@ function App(): React.JSX.Element {
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function BubbleView({ bubble }: { bubble: Bubble }): React.JSX.Element {
-  const isUser = bubble.role === 'user'
-  const isSystem = bubble.role === 'system'
-  const isTool = bubble.role === 'tool'
-
-  if (isSystem) {
-    return (
-      <div className="rounded-[9.6px] border border-terra/30 bg-terra/5 px-4 py-3 text-[13px] text-ink">
-        {bubble.text}
-      </div>
-    )
-  }
-  if (isTool) {
-    return <div className="text-[12px] text-stone italic">{bubble.text}</div>
-  }
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] rounded-[9.6px] px-4 py-3 text-[15px] leading-[1.5] ${
-          isUser
-            ? 'whitespace-pre-wrap bg-ink text-snow'
-            : 'prose-portico border border-parchment bg-snow text-ink'
-        }`}
-      >
-        {isUser ? (
-          bubble.text
-        ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{bubble.text}</ReactMarkdown>
-        )}
       </div>
     </div>
   )

@@ -127,6 +127,9 @@ app.whenReady().then(() => {
             systemPrompt: systemPromptFor(),
             allowedTools: READ_ONLY_TOOLS,
             permissionMode: 'bypassPermissions',
+            // Stream partial events so the renderer can show text + thinking
+            // as they arrive, instead of waiting for the full assistant turn.
+            includePartialMessages: true,
             ...(resumeId ? { resume: resumeId } : {})
           }
         })

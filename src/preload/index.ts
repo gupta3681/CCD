@@ -3,10 +3,17 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 type Disposer = () => void
 
+export type Block =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string }
+  | { type: 'tool_use'; name: string; input: unknown }
+  | { type: 'tool_result'; text: string }
+
 export interface Bubble {
   id: string
   role: 'user' | 'assistant' | 'system' | 'tool'
-  text: string
+  blocks?: Block[]
+  text?: string
 }
 
 export interface ConversationSummary {
