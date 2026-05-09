@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
 import { BubbleView } from './components/BubbleView'
+import { Settings } from './components/Settings'
 import type { Block, Bubble, ConversationSummary } from '../../preload'
 
 // SDK partial-message stream events (see Anthropic SDK BetaRawMessageStreamEvent).
@@ -51,6 +52,7 @@ function App(): React.JSX.Element {
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID())
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
+  const [view, setView] = useState<'chat' | 'settings'>('chat')
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const refreshList = useCallback(async () => {
@@ -240,11 +242,22 @@ function App(): React.JSX.Element {
         onToggleCollapsed={toggleCollapsed}
         activeConversationId={conversationId}
         conversations={conversations}
-        onNewSession={newSession}
-        onSelect={selectSession}
+        onNewSession={() => {
+          newSession()
+          setView('chat')
+        }}
+        onSelect={(id) => {
+          selectSession(id)
+          setView('chat')
+        }}
         onDelete={deleteSession}
+        onOpenSettings={() => setView('settings')}
+        settingsActive={view === 'settings'}
       />
 
+      {view === 'settings' && <Settings onClose={() => setView('chat')} />}
+
+      {view === 'chat' && (
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-parchment px-6 py-3 [-webkit-app-region:drag]">
           <div className="flex items-baseline gap-2 [-webkit-app-region:no-drag]">
@@ -321,6 +334,7 @@ function App(): React.JSX.Element {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

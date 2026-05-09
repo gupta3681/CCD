@@ -5,6 +5,7 @@ import { config as loadDotenv } from 'dotenv'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import icon from '../../resources/icon.png?asset'
 import * as conversations from './conversations'
+import * as userSettings from './userSettings'
 
 loadDotenv()
 
@@ -107,6 +108,20 @@ app.whenReady().then(() => {
     activeRuns.get(runId)?.abort()
     activeRuns.delete(runId)
   })
+
+  // ── User settings (~/.claude) ─────────────────────────────────────────
+  ipcMain.handle('settings:paths', () => userSettings.paths())
+  ipcMain.handle('settings:claudeMd:read', () => userSettings.readClaudeMd())
+  ipcMain.handle('settings:claudeMd:write', (_e, content: string) =>
+    userSettings.writeClaudeMd(content)
+  )
+  ipcMain.handle('settings:skills:list', () => userSettings.listSkills())
+  ipcMain.handle('settings:skills:read', (_e, name: string) => userSettings.readSkill(name))
+  ipcMain.handle('settings:skills:write', (_e, name: string, content: string) =>
+    userSettings.writeSkill(name, content)
+  )
+  ipcMain.handle('settings:skills:create', (_e, name: string) => userSettings.createSkill(name))
+  ipcMain.handle('settings:skills:delete', (_e, name: string) => userSettings.deleteSkill(name))
 
   // ── Conversations ─────────────────────────────────────────────────────
   ipcMain.handle('conversations:list', () => conversations.list())

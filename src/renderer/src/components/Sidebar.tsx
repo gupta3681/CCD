@@ -9,6 +9,8 @@ interface Props {
   onNewSession: () => void
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onOpenSettings: () => void
+  settingsActive: boolean
 }
 
 function relativeTime(ts: number): string {
@@ -31,7 +33,9 @@ export function Sidebar(props: Props): React.JSX.Element {
     conversations,
     onNewSession,
     onSelect,
-    onDelete
+    onDelete,
+    onOpenSettings,
+    settingsActive
   } = props
 
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -52,6 +56,16 @@ export function Sidebar(props: Props): React.JSX.Element {
           className="flex h-9 w-9 items-center justify-center rounded-[9.6px] text-graphite hover:bg-parchment/50 [-webkit-app-region:no-drag]"
         >
           <PlusIcon />
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={onOpenSettings}
+          title="Settings"
+          className={`flex h-9 w-9 items-center justify-center rounded-[9.6px] [-webkit-app-region:no-drag] ${
+            settingsActive ? 'bg-parchment/60 text-ink' : 'text-graphite hover:bg-parchment/50'
+          }`}
+        >
+          <GearIcon />
         </button>
       </aside>
     )
@@ -84,7 +98,7 @@ export function Sidebar(props: Props): React.JSX.Element {
         Recents
       </div>
 
-      <div className="mt-1 flex-1 overflow-y-auto px-1.5 pb-3">
+      <div className="mt-1 flex-1 overflow-y-auto px-1.5">
         {conversations.length === 0 && (
           <div className="px-3 py-3 text-[12px] text-stone">No sessions yet.</div>
         )}
@@ -124,6 +138,15 @@ export function Sidebar(props: Props): React.JSX.Element {
           )
         })}
       </div>
+
+      <button
+        onClick={onOpenSettings}
+        className={`mx-3 mb-3 mt-2 flex items-center gap-2 rounded-[9.6px] border border-onyx/15 px-3 py-2 text-left text-[13px] text-ink ${
+          settingsActive ? 'bg-parchment/60' : 'bg-snow hover:border-onyx/30'
+        }`}
+      >
+        <GearIcon /> Settings
+      </button>
     </aside>
   )
 }
@@ -141,6 +164,20 @@ function PanelIcon(): React.JSX.Element {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
       <line x1="6" y1="3" x2="6" y2="13" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  )
+}
+
+function GearIcon(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8L3.4 3.4"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
