@@ -28,6 +28,33 @@ const pendingPermissions = new Map<string, PendingPermission>()
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
+/**
+ * The Claude Code CLI binary the Agent SDK spawns ships in a per-platform
+ * package: @anthropic-ai/claude-agent-sdk-<platform>-<arch>/claude.
+ *
+ * In dev (npm run dev), require.resolve from inside the SDK gives a real
+ * filesystem path — fine. In a packaged Electron app, the SDK lives inside
+ * app.asar, so require.resolve returns a path like
+ *   .../Resources/app.asar/node_modules/.../claude
+ * Electron's asar layer transparently redirects READS to app.asar.unpacked,
+ * but child_process.spawn() goes through libc which doesn't understand asar
+ * — it tries to traverse `app.asar` as a directory and fails with ENOTDIR.
+ *
+ * Fix: in packaged builds, compute the unpacked path explicitly and pass it
+ * via the SDK's `pathToClaudeCodeExecutable` option.
+ */
+function claudeCodeExecPath(): string | undefined {
+  if (!app.isPackaged) return undefined // dev: SDK resolves normally
+  const platformPkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`
+  return join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    'node_modules',
+    platformPkg,
+    'claude'
+  )
+}
+
 // Default: extend the Claude Code agent preset with a Portico identity line.
 // The preset is required for full agent behavior (tool guidance, etc.) so we
 // keep it on by default. Override with a plain string via PORTICO_SYSTEM_PROMPT,
@@ -309,6 +336,7 @@ app.whenReady().then(() => {
             systemPrompt: systemPromptFor(),
             includePartialMessages: true,
             abortController: controller,
+            pathToClaudeCodeExecutable: claudeCodeExecPath(),
             settingSources,
             // Keep SDK persistence on. We have our own conversations.json for
             // titles / sidebar listing / decisions / trust flag — but the SDK
