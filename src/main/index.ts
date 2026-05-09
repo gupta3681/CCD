@@ -12,8 +12,13 @@ import { screenTool, type Screening } from './screenTool'
 
 loadDotenv()
 
-// runId -> AbortController, so the renderer can cancel a streaming query.
-const activeRuns = new Map<string, AbortController>()
+// runId -> { controller, conversationId } so cancel can mark the right
+// conversation as interrupted.
+interface ActiveRun {
+  controller: AbortController
+  conversationId: string
+}
+const activeRuns = new Map<string, ActiveRun>()
 
 // Pending permission prompts. Resolves when the renderer responds.
 interface PendingPermission {
@@ -134,8 +139,11 @@ app.whenReady().then(() => {
   ipcMain.handle('gateway:info', () => gatewayInfo())
 
   ipcMain.handle('agent:cancel', (_e, runId: string) => {
-    activeRuns.get(runId)?.abort()
+    const ar = activeRuns.get(runId)
+    if (!ar) return
+    ar.controller.abort()
     activeRuns.delete(runId)
+    conversations.setInterrupted(ar.conversationId, true)
     for (const [reqId, p] of pendingPermissions) {
       if (reqId.startsWith(`${runId}:`)) {
         p.resolve({ allow: false, reason: 'cancelled' })
@@ -239,6 +247,17 @@ app.whenReady().then(() => {
       // the conversations.json file could have been edited externally.
       const cwd = storedCwd && isCwdSafe(storedCwd) ? storedCwd : undefined
       const trustProject = !!cwd && conversations.getTrustProject(conversationId)
+
+      // If the previous turn was stopped by the user, give the model a tiny
+      // heads-up so it doesn't pick up as if nothing happened.
+      let effectivePrompt = prompt
+      if (conversations.getInterrupted(conversationId)) {
+        effectivePrompt =
+          '[The user pressed Stop on your previous reply, cutting it off mid-stream. ' +
+          'Acknowledge that briefly if relevant, then handle this new message.]\n\n' +
+          prompt
+        conversations.setInterrupted(conversationId, false)
+      }
       // settingSources controls which .claude/ dirs the SDK auto-loads.
       // - 'user' is always safe (the user's own ~/.claude/).
       // - 'project' loads CLAUDE.md + skills from the working folder. Opt-in
@@ -248,14 +267,14 @@ app.whenReady().then(() => {
         ? ['user', 'project']
         : ['user']
       const controller = new AbortController()
-      activeRuns.set(runId, controller)
+      activeRuns.set(runId, { controller, conversationId })
 
       const settings = appSettings.get()
       const askMode = settings.permissionMode === 'ask'
 
       try {
         const result = query({
-          prompt,
+          prompt: effectivePrompt,
           options: {
             model: modelFor(),
             systemPrompt: systemPromptFor(),
@@ -328,6 +347,7 @@ app.whenReady().then(() => {
         send('agent:done', null)
       } catch (err) {
         if (controller.signal.aborted) {
+          send('agent:cancelled', null)
           send('agent:done', null) // user-initiated stop, not a real error
         } else {
           const error =

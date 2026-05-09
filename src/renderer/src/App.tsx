@@ -234,6 +234,18 @@ function App(): React.JSX.Element {
       setBubbles((prev) => upsertBubble(prev, bubble))
     })
 
+    const offCancelled = window.api.onCancelled((runId) => {
+      // Tag the in-flight assistant bubble for this run so the UI shows a
+      // "Stopped" badge under whatever was streamed so far.
+      const messageId = currentMessageIdRef.current.get(runId)
+      if (messageId) {
+        const bubbleId = `${runId}-${messageId}`
+        setBubbles((prev) =>
+          prev.map((b) => (b.id === bubbleId ? { ...b, interrupted: true } : b))
+        )
+      }
+    })
+
     const offDone = window.api.onDone((runId) => {
       currentMessageIdRef.current.delete(runId)
       setBusy(false)
@@ -259,6 +271,7 @@ function App(): React.JSX.Element {
       offErr()
       offScreening()
       offRequest()
+      offCancelled()
     }
   }, [refreshList, applyStreamEvent])
 

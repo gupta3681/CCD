@@ -115,6 +115,28 @@ export function getTrustProject(id: string): boolean {
   return load()[id]?.trustProject === true
 }
 
+export function getInterrupted(id: string): boolean {
+  return load()[id]?.lastInterrupted === true
+}
+
+export function setInterrupted(id: string, value: boolean): void {
+  const store = load()
+  const now = Date.now()
+  const existing = store[id]
+  store[id] = existing
+    ? { ...existing, lastInterrupted: value, updatedAt: now }
+    : {
+        id,
+        title: 'New chat',
+        createdAt: now,
+        updatedAt: now,
+        sessionId: null,
+        bubbles: [],
+        lastInterrupted: value
+      }
+  persist()
+}
+
 export function setTrustProject(id: string, trust: boolean): void {
   const store = load()
   const now = Date.now()

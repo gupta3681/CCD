@@ -115,6 +115,37 @@ describe('cwd persistence', () => {
   })
 })
 
+describe('interrupted flag persistence', () => {
+  it('defaults to false', async () => {
+    const { conv } = await load()
+    conv.save('id', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'hi' }] }])
+    expect(conv.getInterrupted('id')).toBe(false)
+  })
+
+  it('round-trips true', async () => {
+    const { conv } = await load()
+    conv.setInterrupted('id', true)
+    expect(conv.getInterrupted('id')).toBe(true)
+  })
+
+  it('clearing it back to false', async () => {
+    const { conv } = await load()
+    conv.setInterrupted('id', true)
+    conv.setInterrupted('id', false)
+    expect(conv.getInterrupted('id')).toBe(false)
+  })
+
+  it('setInterrupted does NOT shuffle list order (only metadata change)', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.setInterrupted('a', true)
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+})
+
 describe('trustProject persistence', () => {
   it('defaults to false when never set', async () => {
     const { conv } = await load()

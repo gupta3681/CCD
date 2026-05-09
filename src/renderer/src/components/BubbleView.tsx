@@ -57,10 +57,15 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
   // Once any text block in this assistant turn has content, the thinking is
   // "done" — auto-collapse it so the answer is visible.
   const hasFinalText = blocks.some((b) => b.type === 'text' && b.text.trim().length > 0)
+  const interrupted = !!bubble.interrupted
 
   return (
     <div className="flex justify-start">
-      <div className="prose-portico flex max-w-[85%] flex-col gap-2 rounded-[9.6px] border border-parchment bg-snow px-4 py-3 text-[15px] leading-[1.5] text-ink">
+      <div
+        className={`prose-portico flex max-w-[85%] flex-col gap-2 rounded-[9.6px] border bg-snow px-4 py-3 text-[15px] leading-[1.5] text-ink ${
+          interrupted ? 'border-terra/40' : 'border-parchment'
+        }`}
+      >
         {blocks.map((blk, i) => {
           if (blk.type === 'thinking')
             return <ThinkingBlock key={i} text={blk.thinking} done={hasFinalText} />
@@ -68,6 +73,12 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
           if (blk.type === 'text') return <TextBlock key={i} text={blk.text} />
           return null
         })}
+        {interrupted && (
+          <div className="mt-1 flex items-center gap-1.5 border-t border-parchment pt-2 text-[11px] text-terra">
+            <span>✕</span>
+            <span>Stopped by you. Your next message will let Claude know it was interrupted.</span>
+          </div>
+        )}
       </div>
     </div>
   )

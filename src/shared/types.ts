@@ -20,6 +20,8 @@ export interface Bubble {
   role: 'user' | 'assistant' | 'system' | 'tool' | 'permission'
   blocks?: Block[]
   text?: string
+  /** True if the user pressed Stop while this bubble was being streamed. */
+  interrupted?: boolean
 }
 
 export interface ConversationSummary {
@@ -54,6 +56,12 @@ export interface Conversation {
    * prompt-injection vector if the folder is from an untrusted source.
    */
   trustProject?: boolean
+  /**
+   * Set when the user pressed Stop mid-response. The next user message will
+   * have a short system note prepended so the model knows it was interrupted,
+   * then this flag is cleared.
+   */
+  lastInterrupted?: boolean
 }
 
 export interface SkillSummary {

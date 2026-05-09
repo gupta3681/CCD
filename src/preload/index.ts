@@ -126,6 +126,12 @@ const api = {
     return () => ipcRenderer.off('agent:done', handler)
   },
 
+  onCancelled: (cb: (runId: string) => void): Disposer => {
+    const handler = (_e: unknown, payload: { runId: string }): void => cb(payload.runId)
+    ipcRenderer.on('agent:cancelled', handler)
+    return () => ipcRenderer.off('agent:cancelled', handler)
+  },
+
   onError: (cb: (runId: string, error: { message: string }) => void): Disposer => {
     const handler = (
       _e: unknown,
