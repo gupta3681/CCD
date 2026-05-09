@@ -109,6 +109,10 @@ function App(): React.JSX.Element {
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
   // pile multiple turns into one visual bubble.
   const currentMessageIdRef = useRef<Map<string, string>>(new Map())
+  // Tracks the bubble-array reference we just loaded from disk for an existing
+  // session. The persistence effect skips save when bubbles still === this ref,
+  // so re-opening an old session doesn't bump its lastMessageAt.
+  const loadedBubblesRef = useRef<Bubble[] | null>(null)
 
   const refreshList = useCallback(async () => {
     const list = await window.api.conversations.list()
@@ -295,8 +299,12 @@ function App(): React.JSX.Element {
   }, [bubbles])
 
   // Persist whenever bubbles settle (debounced 400ms — covers token-streaming bursts).
+  // Skip when bubbles are still the freshly-loaded reference: opening an old
+  // session shouldn't write the same content back to disk and bump
+  // lastMessageAt (which would shuffle the sidebar).
   useEffect(() => {
     if (bubbles.length === 0) return
+    if (bubbles === loadedBubblesRef.current) return
     const t = setTimeout(async () => {
       await window.api.conversations.save(conversationId, bubbles)
       refreshList()
@@ -329,6 +337,7 @@ function App(): React.JSX.Element {
     setBubbles([])
     setCwd(null)
     setTrustProject(false)
+    loadedBubblesRef.current = null
   }
 
   async function selectSession(id: string): Promise<void> {
@@ -337,6 +346,9 @@ function App(): React.JSX.Element {
     if (!conv) return
     setConversationId(id)
     setBubbles(conv.bubbles)
+    // Mark this exact array reference as "loaded from disk" so the
+    // persistence effect skips writing it back.
+    loadedBubblesRef.current = conv.bubbles
     setCwd(conv.cwd ?? null)
     setTrustProject(!!conv.trustProject)
   }
@@ -348,6 +360,7 @@ function App(): React.JSX.Element {
       setBubbles([])
       setCwd(null)
       setTrustProject(false)
+      loadedBubblesRef.current = null
     }
     refreshList()
   }
