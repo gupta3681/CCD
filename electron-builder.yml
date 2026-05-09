@@ -1,5 +1,5 @@
-appId: com.ccd.app
-productName: Claude Code Desktop
+appId: com.portico.app
+productName: Portico
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - 'resources/**'
 win:
-  executableName: ccd
+  executableName: portico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -21,8 +21,8 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSDocumentsFolderUsageDescription: Claude Code Desktop accesses files you ask it to.
-    - NSDownloadsFolderUsageDescription: Claude Code Desktop accesses files you ask it to.
+    - NSDocumentsFolderUsageDescription: Portico accesses files you ask it to.
+    - NSDownloadsFolderUsageDescription: Portico accesses files you ask it to.
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}

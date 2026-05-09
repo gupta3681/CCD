@@ -1,7 +1,7 @@
 {
-  "name": "ccd",
+  "name": "portico",
   "version": "0.1.0",
-  "description": "Claude Code Desktop — Portkey-compliant GUI for the Claude Agent SDK",
+  "description": "Portico — Portkey-compliant GUI for the Claude Agent SDK. Powered by Claude.",
   "main": "./out/main/index.js",
   "author": "aryan",
   "scripts": {

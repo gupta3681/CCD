@@ -1,26 +1,27 @@
-# Claude Code Desktop (CCD)
+# Portico
 
-Portkey-compliant GUI for the Claude Agent SDK. Mac + Windows desktop app. Single-developer V1.
+> Portkey-compliant desktop GUI for the Claude Agent SDK. **Powered by Claude.** Mac + Windows. Single-developer V1.
 
-See `ReferenceDesign.md` for the visual style system (Anthropic "Vellum") and the office-hours design doc at `~/.gstack/projects/CCD/aryan-main-design-*.md` for product context.
+The product is named *Portico*. The repo dir name (`CCD`) is internal and unchanged. See `ReferenceDesign.md` for the visual style system (Anthropic "Vellum"); the office-hours design doc lives at `~/.gstack/projects/CCD/aryan-main-design-*.md`.
 
 ## V1 scope
 
 - Electron shell + React renderer.
 - Claude Agent SDK runs in the main process.
-- Portkey is configured via env vars (`ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`).
-- One chat surface. No pre-baked workflows yet — those land in v1.5 (timesheet first, per the design doc).
+- Portkey configured via env vars (`ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`).
+- One chat surface with multi-turn memory (session resume).
+- **Read-only toolset** — Read / Glob / Grep / WebSearch / WebFetch / TodoWrite / AskUserQuestion. No Write, no Edit, no Bash. The permission-prompt UI lands in v1.1 and unlocks the rest.
 
 ## Setup
 
 ```bash
 cp .env.example .env
-# Edit .env with your Portkey gateway URL and virtual key
+# Edit .env with your gateway URL + key
 npm install
 npm run dev
 ```
 
-The header in the app shows which gateway the SDK is pointed at and whether a key is configured.
+The header shows the gateway and a green/red dot for whether a key was found. "New chat" in the header resets the session.
 
 ## Build
 
@@ -29,14 +30,14 @@ npm run build:mac     # signed .dmg (notarization off until cert procured)
 npm run build:win     # .exe installer
 ```
 
-Code signing is required before internal distribution — see "Distribution Plan" in the design doc.
+Code signing is required before any internal distribution.
 
 ## Layout
 
 ```
 src/
-  main/index.ts       # Electron main + IPC handlers + Agent SDK calls
-  preload/index.ts    # contextBridge: window.api.{query, onMessage, …}
+  main/index.ts       # Electron main + IPC handlers + Agent SDK calls + session map
+  preload/index.ts    # contextBridge: window.api.{query, onMessage, resetConversation, …}
   renderer/src/
     App.tsx           # Chat UI
     main.tsx          # React mount

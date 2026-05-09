@@ -7,6 +7,24 @@ import icon from '../../resources/icon.png?asset'
 
 loadDotenv()
 
+// V1 toolset: read-only. Agent can answer questions and search the web,
+// but cannot write, edit, or run shell commands. Write/Bash come back when
+// we ship the permission-prompt UI in v1.1.
+const READ_ONLY_TOOLS = [
+  'Read',
+  'Glob',
+  'Grep',
+  'WebSearch',
+  'WebFetch',
+  'TodoWrite',
+  'AskUserQuestion'
+]
+
+// conversationId (assigned by renderer) -> Agent SDK session_id (captured from
+// the first system.init message). Subsequent queries pass `resume: sessionId`
+// so the agent has memory across turns.
+const sessionByConversation = new Map<string, string>()
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1100,
@@ -15,6 +33,7 @@ function createWindow(): BrowserWindow {
     autoHideMenuBar: true,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#faf9f5',
+    title: 'Portico',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -47,7 +66,7 @@ function gatewayInfo(): { gateway: string; configured: boolean } {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.ccd.app')
+  electronApp.setAppUserModelId('com.portico.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -55,32 +74,50 @@ app.whenReady().then(() => {
 
   ipcMain.handle('gateway:info', () => gatewayInfo())
 
-  ipcMain.handle('agent:query', async (event, prompt: string, runId: string) => {
-    const sender = event.sender
-    const send = (channel: string, payload: unknown): void => {
-      if (!sender.isDestroyed()) sender.send(channel, { runId, payload })
-    }
-
-    try {
-      const result = query({
-        prompt,
-        options: {
-          // Force the SDK to use plain API key auth via env (Portkey-friendly).
-          // The user is expected to set ANTHROPIC_BASE_URL + ANTHROPIC_API_KEY
-          // (or ANTHROPIC_AUTH_TOKEN) in their .env to point at Portkey.
-          permissionMode: 'bypassPermissions'
-        }
-      })
-
-      for await (const message of result) {
-        send('agent:message', message)
-      }
-      send('agent:done', null)
-    } catch (err) {
-      const error = err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) }
-      send('agent:error', error)
-    }
+  ipcMain.handle('conversation:reset', (_e, conversationId: string) => {
+    sessionByConversation.delete(conversationId)
   })
+
+  ipcMain.handle(
+    'agent:query',
+    async (event, prompt: string, runId: string, conversationId: string) => {
+      const sender = event.sender
+      const send = (channel: string, payload: unknown): void => {
+        if (!sender.isDestroyed()) sender.send(channel, { runId, payload })
+      }
+
+      const resumeId = sessionByConversation.get(conversationId)
+
+      try {
+        const result = query({
+          prompt,
+          options: {
+            allowedTools: READ_ONLY_TOOLS,
+            permissionMode: 'bypassPermissions',
+            ...(resumeId ? { resume: resumeId } : {})
+          }
+        })
+
+        for await (const message of result) {
+          // Capture session_id on the first init message of a brand new conversation.
+          if (
+            !resumeId &&
+            (message as { type?: string }).type === 'system' &&
+            (message as { subtype?: string }).subtype === 'init'
+          ) {
+            const sid = (message as { session_id?: string }).session_id
+            if (sid) sessionByConversation.set(conversationId, sid)
+          }
+          send('agent:message', message)
+        }
+        send('agent:done', null)
+      } catch (err) {
+        const error =
+          err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) }
+        send('agent:error', error)
+      }
+    }
+  )
 
   createWindow()
 

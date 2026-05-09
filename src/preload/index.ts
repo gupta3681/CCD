@@ -7,8 +7,11 @@ const api = {
   gatewayInfo: (): Promise<{ gateway: string; configured: boolean }> =>
     ipcRenderer.invoke('gateway:info'),
 
-  query: (prompt: string, runId: string): Promise<void> =>
-    ipcRenderer.invoke('agent:query', prompt, runId),
+  query: (prompt: string, runId: string, conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('agent:query', prompt, runId, conversationId),
+
+  resetConversation: (conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('conversation:reset', conversationId),
 
   onMessage: (cb: (runId: string, message: unknown) => void): Disposer => {
     const handler = (_e: unknown, payload: { runId: string; payload: unknown }): void =>

@@ -30,10 +30,7 @@ function extractText(msg: SDKMessage): { role: Role; text: string } | null {
   }
   if (msg.type === 'user' && msg.message?.content) {
     const text = msg.message.content
-      .map((b) => {
-        if (b.type === 'tool_result') return `← tool result`
-        return ''
-      })
+      .map((b) => (b.type === 'tool_result' ? `← tool result` : ''))
       .join('')
     return text ? { role: 'tool', text } : null
   }
@@ -46,6 +43,7 @@ function App(): React.JSX.Element {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [gateway, setGateway] = useState<{ gateway: string; configured: boolean } | null>(null)
+  const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID())
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -81,7 +79,14 @@ function App(): React.JSX.Element {
     setBubbles((prev) => [...prev, { id: `${runId}-u`, role: 'user', text: prompt }])
     setInput('')
     setBusy(true)
-    await window.api.query(prompt, runId)
+    await window.api.query(prompt, runId, conversationId)
+  }
+
+  async function newChat(): Promise<void> {
+    if (busy) return
+    await window.api.resetConversation(conversationId)
+    setConversationId(crypto.randomUUID())
+    setBubbles([])
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -94,22 +99,30 @@ function App(): React.JSX.Element {
   return (
     <div className="flex h-screen flex-col bg-vellum text-ink">
       <header className="flex items-center justify-between border-b border-parchment px-6 py-3 [-webkit-app-region:drag]">
-        <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
-          <div className="font-serif text-[18px] font-[330]">Claude Code Desktop</div>
-          <span className="text-[11px] text-dusty">v0.1</span>
+        <div className="flex items-baseline gap-2 [-webkit-app-region:no-drag]">
+          <div className="font-serif text-[18px] font-[330]">Portico</div>
+          <span className="text-[11px] text-dusty">Powered by Claude · v0.1</span>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-dusty [-webkit-app-region:no-drag]">
+        <div className="flex items-center gap-4 text-[11px] text-dusty [-webkit-app-region:no-drag]">
+          <button
+            onClick={newChat}
+            disabled={busy || bubbles.length === 0}
+            className="rounded-[9.6px] border border-onyx/20 px-2.5 py-1 text-ink hover:bg-snow disabled:opacity-30"
+          >
+            New chat
+          </button>
           {gateway ? (
-            <>
+            <div className="flex items-center gap-2">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${
                   gateway.configured ? 'bg-[#4a8a5e]' : 'bg-terra'
                 }`}
               />
               <span>
-                {gateway.gateway} {gateway.configured ? '' : '· not configured'}
+                {gateway.gateway}
+                {gateway.configured ? '' : ' · not configured'}
               </span>
-            </>
+            </div>
           ) : (
             <span>…</span>
           )}
@@ -121,17 +134,18 @@ function App(): React.JSX.Element {
           {bubbles.length === 0 && (
             <div className="mt-12 text-center">
               <h1 className="font-serif text-[40px] font-[330] leading-tight text-ink">
-                What would you like Claude to do?
+                What can I help you with?
               </h1>
               <p className="mt-3 text-[14px] text-dusty">
-                Routed through {gateway?.gateway ?? 'your configured gateway'}. Every prompt is policy-checked.
+                Routed through {gateway?.gateway ?? 'your configured gateway'}. Read-only mode — I can read,
+                search, and answer, but I won't change files or run commands.
               </p>
             </div>
           )}
           {bubbles.map((b) => (
             <Bubble key={b.id} bubble={b} />
           ))}
-          {busy && <div className="text-[12px] text-stone">Claude is working…</div>}
+          {busy && <div className="text-[12px] text-stone">Working…</div>}
         </div>
       </div>
 
@@ -139,7 +153,7 @@ function App(): React.JSX.Element {
         <div className="mx-auto flex max-w-[760px] items-end gap-3">
           <textarea
             className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
-            placeholder="Ask Claude to do something…  (Enter to send, Shift+Enter for newline)"
+            placeholder="Ask anything…  (Enter to send, Shift+Enter for newline)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
