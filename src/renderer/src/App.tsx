@@ -148,6 +148,52 @@ function App(): React.JSX.Element {
       // stream events already built. Ignore.
     })
 
+    const offScreening = window.api.onPermissionScreening((s) => {
+      // Insert a placeholder permission bubble so the user sees "Screening…"
+      setBubbles((prev) => [
+        ...prev,
+        {
+          id: `perm-${s.requestId}`,
+          role: 'permission',
+          blocks: [
+            {
+              type: 'permission_request',
+              requestId: s.requestId,
+              toolName: s.toolName,
+              input: {},
+              screening: null,
+              decision: null
+            }
+          ]
+        }
+      ])
+    })
+
+    const offRequest = window.api.onPermissionRequest((req) => {
+      setBubbles((prev) => {
+        const id = `perm-${req.requestId}`
+        const idx = prev.findIndex((b) => b.id === id)
+        const newBubble = {
+          id,
+          role: 'permission' as const,
+          blocks: [
+            {
+              type: 'permission_request' as const,
+              requestId: req.requestId,
+              toolName: req.toolName,
+              input: req.input,
+              screening: req.screening,
+              decision: null
+            }
+          ]
+        }
+        if (idx === -1) return [...prev, newBubble]
+        const next = [...prev]
+        next[idx] = newBubble
+        return next
+      })
+    })
+
     const offDone = window.api.onDone(() => {
       setBusy(false)
       setActiveRunId(null)
@@ -169,8 +215,25 @@ function App(): React.JSX.Element {
       offMsg()
       offDone()
       offErr()
+      offScreening()
+      offRequest()
     }
   }, [refreshList, applyStreamEvent])
+
+  async function decidePermission(requestId: string, allow: boolean): Promise<void> {
+    await window.api.respondPermission(requestId, { allow })
+    setBubbles((prev) =>
+      prev.map((b) => {
+        if (b.role !== 'permission' || !b.blocks) return b
+        const blocks = b.blocks.map((blk) =>
+          blk.type === 'permission_request' && blk.requestId === requestId
+            ? { ...blk, decision: { allow, at: Date.now() } }
+            : blk
+        )
+        return { ...b, blocks }
+      })
+    )
+  }
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: 'smooth' })
@@ -296,7 +359,7 @@ function App(): React.JSX.Element {
               </div>
             )}
             {bubbles.map((b) => (
-              <BubbleView key={b.id} bubble={b} />
+              <BubbleView key={b.id} bubble={b} onPermissionDecision={decidePermission} />
             ))}
             {busy && <div className="text-[12px] text-stone">Working…</div>}
           </div>

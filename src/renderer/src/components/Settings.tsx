@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { Skill, SkillSummary, SettingsPaths } from '../../../preload'
+import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../preload'
 
-type Tab = 'memory' | 'skills'
+type Tab = 'permissions' | 'memory' | 'skills'
 
 export function Settings({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('memory')
+  const [tab, setTab] = useState<Tab>('permissions')
   const [paths, setPaths] = useState<SettingsPaths | null>(null)
 
   useEffect(() => {
@@ -28,11 +28,13 @@ export function Settings({ onClose }: { onClose: () => void }): React.JSX.Elemen
 
       <div className="flex flex-1 overflow-hidden">
         <nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-parchment py-4">
+          <TabBtn active={tab === 'permissions'} onClick={() => setTab('permissions')} label="Permissions" hint="Tool approvals" />
           <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} label="Memory" hint="CLAUDE.md" />
           <TabBtn active={tab === 'skills'} onClick={() => setTab('skills')} label="Skills" hint="~/.claude/skills" />
         </nav>
 
         <div className="flex flex-1 flex-col overflow-hidden">
+          {tab === 'permissions' && <PermissionsTab />}
           {tab === 'memory' && <MemoryTab />}
           {tab === 'skills' && <SkillsTab />}
         </div>
@@ -56,6 +58,122 @@ function TabBtn(props: {
     >
       <span className="text-[13px] text-ink">{props.label}</span>
       <span className="text-[10px] text-stone">{props.hint}</span>
+    </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Permissions tab — controls tool approval mode + auto-screening
+// ─────────────────────────────────────────────────────────────────────────
+
+function PermissionsTab(): React.JSX.Element {
+  const [settings, setSettings] = useState<AppSettings | null>(null)
+
+  useEffect(() => {
+    window.api.appSettings.get().then(setSettings)
+  }, [])
+
+  async function update(patch: Partial<AppSettings>): Promise<void> {
+    const next = await window.api.appSettings.set(patch)
+    setSettings(next)
+  }
+
+  if (!settings) {
+    return <div className="px-6 py-6 text-[12px] text-stone">Loading…</div>
+  }
+
+  return (
+    <div className="overflow-y-auto px-6 py-6">
+      <div className="max-w-[640px]">
+        <h2 className="font-serif text-[24px] font-[400] text-ink">Tool permissions</h2>
+        <p className="mt-1 text-[13px] text-dusty">
+          Decide whether the agent can run tools (Read, Write, Bash, etc.) without asking.
+        </p>
+
+        <div className="mt-6 space-y-2">
+          <RadioRow
+            checked={settings.permissionMode === 'auto'}
+            onChange={() => update({ permissionMode: 'auto' })}
+            label="Auto-approve everything"
+            hint="Agent runs every tool call immediately. Fast, but the agent can write files and run shell commands without confirmation. Use for trusted prompts only."
+          />
+          <RadioRow
+            checked={settings.permissionMode === 'ask'}
+            onChange={() => update({ permissionMode: 'ask' })}
+            label="Ask before each tool call"
+            hint="Every tool call pauses the agent and waits for your Approve / Deny. Safer; slower."
+          />
+        </div>
+
+        <div
+          className={`mt-6 rounded-[9.6px] border p-4 transition-opacity ${
+            settings.permissionMode === 'ask'
+              ? 'border-onyx/15 bg-snow opacity-100'
+              : 'border-parchment bg-vellum/40 opacity-60'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-[13px] font-medium text-ink">Auto-screen with Haiku</div>
+              <div className="mt-1 text-[12px] text-graphite">
+                Before each prompt, run a quick Haiku call (~300ms) that summarizes what the tool will do
+                and rates it Safe / Caution / Dangerous. Only relevant when "Ask" mode is on.
+              </div>
+            </div>
+            <Toggle
+              disabled={settings.permissionMode !== 'ask'}
+              checked={settings.autoScreen}
+              onChange={(v) => update({ autoScreen: v })}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RadioRow(props: {
+  checked: boolean
+  onChange: () => void
+  label: string
+  hint: string
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={props.onChange}
+      className={`flex w-full items-start gap-3 rounded-[9.6px] border px-4 py-3 text-left transition-colors ${
+        props.checked ? 'border-onyx/40 bg-snow' : 'border-parchment bg-vellum/40 hover:border-onyx/20'
+      }`}
+    >
+      <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-onyx/40">
+        {props.checked && <div className="h-2 w-2 rounded-full bg-ink" />}
+      </div>
+      <div className="flex-1">
+        <div className="text-[13px] font-medium text-ink">{props.label}</div>
+        <div className="mt-0.5 text-[12px] text-graphite">{props.hint}</div>
+      </div>
+    </button>
+  )
+}
+
+function Toggle(props: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={() => !props.disabled && props.onChange(!props.checked)}
+      disabled={props.disabled}
+      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
+        props.checked ? 'bg-ink' : 'bg-parchment'
+      } ${props.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+    >
+      <div
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-snow transition-transform ${
+          props.checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+        }`}
+      />
     </button>
   )
 }

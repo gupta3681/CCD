@@ -8,10 +8,18 @@ export type Block =
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; name: string; input: unknown }
   | { type: 'tool_result'; text: string }
+  | {
+      type: 'permission_request'
+      requestId: string
+      toolName: string
+      input: Record<string, unknown>
+      screening: Screening | null
+      decision: { allow: boolean; at: number } | null
+    }
 
 export interface Bubble {
   id: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'permission'
   blocks?: Block[]
   text?: string
 }
@@ -48,6 +56,34 @@ export interface SettingsPaths {
   claudeMd: string
 }
 
+export type PermissionMode = 'auto' | 'ask'
+
+export interface AppSettings {
+  permissionMode: PermissionMode
+  autoScreen: boolean
+}
+
+export type Verdict = 'SAFE' | 'CAUTION' | 'DANGEROUS'
+
+export interface Screening {
+  summary: string
+  verdict: Verdict
+  reason: string
+  ms: number
+}
+
+export interface PermissionRequest {
+  requestId: string
+  toolName: string
+  input: Record<string, unknown>
+  screening: Screening | null
+}
+
+export interface PermissionScreeningStart {
+  requestId: string
+  toolName: string
+}
+
 const api = {
   gatewayInfo: (): Promise<{ gateway: string; configured: boolean; model: string }> =>
     ipcRenderer.invoke('gateway:info'),
@@ -56,6 +92,31 @@ const api = {
     ipcRenderer.invoke('agent:query', prompt, runId, conversationId),
 
   cancel: (runId: string): Promise<void> => ipcRenderer.invoke('agent:cancel', runId),
+
+  respondPermission: (requestId: string, decision: { allow: boolean; reason?: string }): Promise<void> =>
+    ipcRenderer.invoke('permission:respond', requestId, decision),
+
+  appSettings: {
+    get: (): Promise<AppSettings> => ipcRenderer.invoke('appSettings:get'),
+    set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
+      ipcRenderer.invoke('appSettings:set', patch)
+  },
+
+  onPermissionRequest: (cb: (req: PermissionRequest) => void): Disposer => {
+    const handler = (_e: unknown, payload: { runId: string; payload: PermissionRequest }): void =>
+      cb(payload.payload)
+    ipcRenderer.on('permission:request', handler)
+    return () => ipcRenderer.off('permission:request', handler)
+  },
+
+  onPermissionScreening: (cb: (s: PermissionScreeningStart) => void): Disposer => {
+    const handler = (
+      _e: unknown,
+      payload: { runId: string; payload: PermissionScreeningStart }
+    ): void => cb(payload.payload)
+    ipcRenderer.on('permission:screening', handler)
+    return () => ipcRenderer.off('permission:screening', handler)
+  },
 
   settings: {
     paths: (): Promise<SettingsPaths> => ipcRenderer.invoke('settings:paths'),

@@ -6,11 +6,19 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import icon from '../../resources/icon.png?asset'
 import * as conversations from './conversations'
 import * as userSettings from './userSettings'
+import * as appSettings from './appSettings'
+import { screenTool, type Screening } from './screenTool'
 
 loadDotenv()
 
 // runId -> AbortController, so the renderer can cancel a streaming query.
 const activeRuns = new Map<string, AbortController>()
+
+// Pending permission prompts. Resolves when the renderer responds.
+interface PendingPermission {
+  resolve: (decision: { allow: boolean; reason?: string }) => void
+}
+const pendingPermissions = new Map<string, PendingPermission>()
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
@@ -91,7 +99,30 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:cancel', (_e, runId: string) => {
     activeRuns.get(runId)?.abort()
     activeRuns.delete(runId)
+    // Auto-deny any pending permissions for this run on cancel.
+    for (const [reqId, p] of pendingPermissions) {
+      if (reqId.startsWith(`${runId}:`)) {
+        p.resolve({ allow: false, reason: 'cancelled' })
+        pendingPermissions.delete(reqId)
+      }
+    }
   })
+
+  ipcMain.handle(
+    'permission:respond',
+    (_e, requestId: string, decision: { allow: boolean; reason?: string }) => {
+      const pending = pendingPermissions.get(requestId)
+      if (!pending) return
+      pending.resolve(decision)
+      pendingPermissions.delete(requestId)
+    }
+  )
+
+  // ── App settings (persisted at <userData>/portico/settings.json) ──────
+  ipcMain.handle('appSettings:get', () => appSettings.get())
+  ipcMain.handle('appSettings:set', (_e, patch: Partial<appSettings.AppSettings>) =>
+    appSettings.set(patch)
+  )
 
   // ── User settings (~/.claude) ─────────────────────────────────────────
   ipcMain.handle('settings:paths', () => userSettings.paths())
@@ -131,18 +162,59 @@ app.whenReady().then(() => {
       const controller = new AbortController()
       activeRuns.set(runId, controller)
 
+      const settings = appSettings.get()
+      const askMode = settings.permissionMode === 'ask'
+
       try {
         const result = query({
           prompt,
           options: {
             model: modelFor(),
             systemPrompt: systemPromptFor(),
-            // Full toolset — Read, Write, Edit, Bash, Glob, Grep, Web*, Task, etc.
-            // bypassPermissions auto-approves them all. Add disallowedTools or
-            // wire a canUseTool callback when shipping to less-trusted users.
-            permissionMode: 'bypassPermissions',
             includePartialMessages: true,
             abortController: controller,
+            ...(askMode
+              ? {
+                  permissionMode: 'default',
+                  canUseTool: async (toolName, toolInput, opts) => {
+                    const requestId = `${runId}:${crypto.randomUUID()}`
+                    let screening: Screening | null = null
+                    if (settings.autoScreen) {
+                      send('permission:screening', { requestId, toolName })
+                      screening = await screenTool(
+                        toolName,
+                        toolInput,
+                        process.cwd(),
+                        opts.signal
+                      )
+                    }
+                    send('permission:request', {
+                      requestId,
+                      toolName,
+                      input: toolInput,
+                      screening
+                    })
+                    const decision = await new Promise<{ allow: boolean; reason?: string }>(
+                      (resolve) => {
+                        pendingPermissions.set(requestId, { resolve })
+                        opts.signal.addEventListener('abort', () => {
+                          if (pendingPermissions.has(requestId)) {
+                            pendingPermissions.delete(requestId)
+                            resolve({ allow: false, reason: 'aborted' })
+                          }
+                        })
+                      }
+                    )
+                    if (decision.allow) {
+                      return { behavior: 'allow', updatedInput: toolInput }
+                    }
+                    return {
+                      behavior: 'deny',
+                      message: decision.reason || 'Denied by user.'
+                    }
+                  }
+                }
+              : { permissionMode: 'bypassPermissions' as const }),
             ...(resumeId ? { resume: resumeId } : {})
           }
         })

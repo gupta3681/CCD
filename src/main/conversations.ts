@@ -7,10 +7,18 @@ export type Block =
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; name: string; input: unknown }
   | { type: 'tool_result'; text: string }
+  | {
+      type: 'permission_request'
+      requestId: string
+      toolName: string
+      input: Record<string, unknown>
+      screening: { summary: string; verdict: 'SAFE' | 'CAUTION' | 'DANGEROUS'; reason: string; ms: number } | null
+      decision: { allow: boolean; at: number } | null
+    }
 
 export interface Bubble {
   id: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'permission'
   // New shape: structured content blocks. Plain `text` is kept for backward
   // compatibility with conversations saved before streaming landed.
   blocks?: Block[]
