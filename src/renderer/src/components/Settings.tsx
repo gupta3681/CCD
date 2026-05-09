@@ -805,7 +805,10 @@ function LogList({ entries, autoscroll }: { entries: LogEntry[]; autoscroll: boo
   }
 
   return (
-    <div ref={ref} className="flex-1 overflow-auto bg-snow font-mono text-[12px] leading-[1.5]">
+    <div
+      ref={ref}
+      className="flex-1 overflow-y-auto overflow-x-hidden bg-snow font-mono text-[12px] leading-[1.5]"
+    >
       {entries.map((e, i) => (
         <LogRow key={i} entry={e} />
       ))}
@@ -824,8 +827,13 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
           : 'text-graphite'
   const time = new Date(entry.ts).toLocaleTimeString('en-US', { hour12: false })
   const meta = entry.meta ? ' ' + JSON.stringify(entry.meta) : ''
+  // Whole row tooltip = the full plain-text line, since we truncate visually.
+  const fullLine = `${time} ${entry.level.toUpperCase()} ${entry.source}: ${entry.message}${meta}`
   return (
-    <div className="border-b border-parchment/40 px-6 py-1.5">
+    <div
+      className="truncate border-b border-parchment/40 px-6 py-1.5"
+      title={fullLine}
+    >
       <span className="text-stone">{time}</span>{' '}
       <span className={`uppercase ${tone}`}>{entry.level.padEnd(5)}</span>{' '}
       <span className="text-dusty">{entry.source.padEnd(12)}</span>{' '}
