@@ -817,6 +817,7 @@ function LogList({ entries, autoscroll }: { entries: LogEntry[]; autoscroll: boo
 }
 
 function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false)
   const tone =
     entry.level === 'error'
       ? 'text-terra'
@@ -826,19 +827,29 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
           ? 'text-stone'
           : 'text-graphite'
   const time = new Date(entry.ts).toLocaleTimeString('en-US', { hour12: false })
-  const meta = entry.meta ? ' ' + JSON.stringify(entry.meta) : ''
-  // Whole row tooltip = the full plain-text line, since we truncate visually.
-  const fullLine = `${time} ${entry.level.toUpperCase()} ${entry.source}: ${entry.message}${meta}`
+  const hasMeta = !!entry.meta
+  const metaPretty = hasMeta ? JSON.stringify(entry.meta, null, 2) : ''
+  const isOverflowing = expanded || hasMeta || entry.message.length > 60
   return (
     <div
-      className="truncate border-b border-parchment/40 px-6 py-1.5"
-      title={fullLine}
+      onClick={() => isOverflowing && setExpanded((v) => !v)}
+      className={`border-b border-parchment/40 px-6 py-1.5 ${
+        isOverflowing ? 'cursor-pointer hover:bg-vellum/50' : ''
+      } ${expanded ? '' : 'truncate'}`}
+      title={isOverflowing && !expanded ? 'Click to expand' : ''}
     >
       <span className="text-stone">{time}</span>{' '}
       <span className={`uppercase ${tone}`}>{entry.level.padEnd(5)}</span>{' '}
       <span className="text-dusty">{entry.source.padEnd(12)}</span>{' '}
       <span className="text-ink">{entry.message}</span>
-      {entry.meta && <span className="text-stone">{meta}</span>}
+      {!expanded && hasMeta && (
+        <span className="text-stone"> {JSON.stringify(entry.meta)}</span>
+      )}
+      {expanded && hasMeta && (
+        <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-[6px] border border-parchment bg-vellum/60 px-3 py-2 text-[11.5px] text-graphite">
+          {metaPretty}
+        </pre>
+      )}
     </div>
   )
 }
