@@ -46,8 +46,11 @@ const api = {
   ): Promise<void> => ipcRenderer.invoke('permission:respond', requestId, decision),
 
   appSettings: {
-    get: (): Promise<AppSettings> => ipcRenderer.invoke('appSettings:get'),
-    set: (patch: Partial<AppSettings>): Promise<AppSettings> =>
+    get: (): Promise<AppSettings & { gatewayKeySet: boolean }> =>
+      ipcRenderer.invoke('appSettings:get'),
+    set: (
+      patch: Partial<AppSettings> & { gatewayApiKey?: string | null }
+    ): Promise<AppSettings & { gatewayKeySet: boolean }> =>
       ipcRenderer.invoke('appSettings:set', patch)
   },
 
@@ -94,7 +97,18 @@ const api = {
       ipcRenderer.invoke('conversations:save', id, bubbles),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('conversations:delete', id),
     rename: (id: string, title: string): Promise<void> =>
-      ipcRenderer.invoke('conversations:rename', id, title)
+      ipcRenderer.invoke('conversations:rename', id, title),
+    setCwd: (id: string, cwd: string | null): Promise<void> =>
+      ipcRenderer.invoke('conversations:setCwd', id, cwd)
+  },
+
+  dialog: {
+    pickFolder: (defaultPath?: string): Promise<string | null> =>
+      ipcRenderer.invoke('dialog:pickFolder', defaultPath)
+  },
+
+  shell: {
+    revealPath: (p: string): Promise<void> => ipcRenderer.invoke('shell:revealPath', p)
   },
 
   onMessage: (cb: (runId: string, message: unknown) => void): Disposer => {

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../preload'
 
-type Tab = 'permissions' | 'memory' | 'skills'
+type Tab = 'gateway' | 'permissions' | 'memory' | 'skills'
 
 export function Settings({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('permissions')
+  const [tab, setTab] = useState<Tab>('gateway')
   const [paths, setPaths] = useState<SettingsPaths | null>(null)
 
   useEffect(() => {
@@ -28,12 +28,14 @@ export function Settings({ onClose }: { onClose: () => void }): React.JSX.Elemen
 
       <div className="flex flex-1 overflow-hidden">
         <nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-parchment py-4">
+          <TabBtn active={tab === 'gateway'} onClick={() => setTab('gateway')} label="Gateway" hint="Portkey · API key" />
           <TabBtn active={tab === 'permissions'} onClick={() => setTab('permissions')} label="Permissions" hint="Tool approvals" />
           <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} label="Memory" hint="CLAUDE.md" />
           <TabBtn active={tab === 'skills'} onClick={() => setTab('skills')} label="Skills" hint="~/.claude/skills" />
         </nav>
 
         <div className="flex flex-1 flex-col overflow-hidden">
+          {tab === 'gateway' && <GatewayTab />}
           {tab === 'permissions' && <PermissionsTab />}
           {tab === 'memory' && <MemoryTab />}
           {tab === 'skills' && <SkillsTab />}
@@ -59,6 +61,134 @@ function TabBtn(props: {
       <span className="text-[13px] text-ink">{props.label}</span>
       <span className="text-[10px] text-stone">{props.hint}</span>
     </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Gateway tab — base URL + API key (encrypted via OS keychain when available)
+// ─────────────────────────────────────────────────────────────────────────
+
+function GatewayTab(): React.JSX.Element {
+  const [baseUrl, setBaseUrl] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [keySet, setKeySet] = useState(false)
+  const [showKey, setShowKey] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    window.api.appSettings.get().then((s) => {
+      setBaseUrl(s.gatewayBaseUrl ?? '')
+      setKeySet(s.gatewayKeySet)
+      setLoaded(true)
+    })
+  }, [])
+
+  async function save(): Promise<void> {
+    setSaving(true)
+    try {
+      const patch: Parameters<typeof window.api.appSettings.set>[0] = {
+        gatewayBaseUrl: baseUrl.trim()
+      }
+      if (apiKey.length > 0) patch.gatewayApiKey = apiKey
+      const next = await window.api.appSettings.set(patch)
+      setKeySet(next.gatewayKeySet)
+      setApiKey('')
+      setSavedAt(Date.now())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function clearKey(): Promise<void> {
+    if (!confirm('Clear the saved API key?')) return
+    const next = await window.api.appSettings.set({ gatewayApiKey: null })
+    setKeySet(next.gatewayKeySet)
+  }
+
+  if (!loaded) {
+    return <div className="px-6 py-6 text-[12px] text-stone">Loading…</div>
+  }
+
+  return (
+    <div className="overflow-y-auto px-6 py-6">
+      <div className="max-w-[640px]">
+        <h2 className="font-serif text-[24px] font-[400] text-ink">Gateway</h2>
+        <p className="mt-1 text-[13px] text-dusty">
+          The endpoint and key Portico uses to talk to Claude. These override the values in{' '}
+          <code className="rounded bg-vellum/60 px-1">.env</code>.
+        </p>
+
+        <Field label="Base URL" hint="Portkey: https://api.portkey.ai/v1   ·   Direct Anthropic: leave blank">
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://api.portkey.ai/v1"
+            className="w-full rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-2 text-[14px] text-ink outline-none focus:border-onyx/30"
+          />
+        </Field>
+
+        <Field
+          label="API key"
+          hint={
+            keySet
+              ? 'A key is currently saved. Type a new one to replace it; leave blank to keep.'
+              : 'Your Portkey virtual key, or sk-ant-… for direct Anthropic.'
+          }
+        >
+          <div className="flex gap-2">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={keySet ? '•••••••••••••••• (saved)' : 'Paste your key'}
+              className="flex-1 rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-onyx/30"
+            />
+            <button
+              onClick={() => setShowKey((v) => !v)}
+              className="rounded-[9.6px] border border-onyx/15 bg-snow px-3 text-[12px] text-ink hover:border-onyx/30"
+            >
+              {showKey ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {keySet && (
+            <button
+              onClick={clearKey}
+              className="mt-2 text-[11px] text-terra hover:underline"
+            >
+              Clear saved key
+            </button>
+          )}
+        </Field>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-[9.6px] bg-ink px-4 py-2 text-[13px] font-medium text-snow hover:opacity-90 disabled:opacity-30"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {savedAt && <span className="text-[11px] text-stone">Saved {new Date(savedAt).toLocaleTimeString()}</span>}
+        </div>
+
+        <p className="mt-6 text-[11px] text-dusty">
+          The key is encrypted at rest using your OS keychain when available. Linux without a keyring falls back to plaintext storage in your userData dir.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function Field(props: { label: string; hint?: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="mt-5">
+      <label className="mb-1.5 block text-[12px] font-medium text-ink">{props.label}</label>
+      {props.children}
+      {props.hint && <p className="mt-1 text-[11px] text-dusty">{props.hint}</p>}
+    </div>
   )
 }
 

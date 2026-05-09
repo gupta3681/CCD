@@ -36,10 +36,11 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
   }
 
   if (bubble.role === 'tool') {
-    const text = blocks
-      .map((b) => (b.type === 'tool_result' ? b.text : b.type === 'text' ? b.text : ''))
-      .join('')
-    return <div className="text-[12px] text-stone italic">{text}</div>
+    const result = blocks.find((b) => b.type === 'tool_result')
+    if (result && result.type === 'tool_result') {
+      return <ToolResultBlock text={result.text} isError={!!result.isError} />
+    }
+    return <></>
   }
 
   if (bubble.role === 'user') {
@@ -89,6 +90,45 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
         <div className="mt-1.5 whitespace-pre-wrap text-[13px] leading-[1.5] text-graphite">{text}</div>
       ) : (
         <div className="mt-1 truncate text-[12px] text-stone italic">{preview}</div>
+      )}
+    </div>
+  )
+}
+
+function ToolResultBlock({ text, isError }: { text: string; isError: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const lines = text.split('\n')
+  const lineCount = lines.length
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return (
+      <div className="text-[11px] text-stone italic">
+        ← tool result {isError && <span className="text-terra">· error</span>} (empty)
+      </div>
+    )
+  }
+  const preview = trimmed.slice(0, 110).replace(/\s+/g, ' ')
+  return (
+    <div
+      className={`rounded-[8px] border px-3 py-2 text-[12px] ${
+        isError ? 'border-terra/40 bg-terra/5' : 'border-parchment bg-vellum/40'
+      }`}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-left text-[11px] uppercase tracking-wider text-dusty hover:text-ink"
+      >
+        <span className="flex items-center gap-1.5">
+          <ArrowIcon /> {isError ? 'tool error' : 'tool result'} · {lineCount} {lineCount === 1 ? 'line' : 'lines'}
+        </span>
+        <span className="text-stone">{open ? '−' : '+'}</span>
+      </button>
+      {open ? (
+        <pre className="mt-2 max-h-[300px] overflow-auto rounded-[6px] bg-snow p-2 text-[11.5px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
+          {text}
+        </pre>
+      ) : (
+        <div className="mt-1 truncate text-[11.5px] text-graphite">{preview}…</div>
       )}
     </div>
   )

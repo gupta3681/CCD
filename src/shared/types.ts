@@ -5,7 +5,7 @@ export type Block =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; name: string; input: unknown }
-  | { type: 'tool_result'; text: string }
+  | { type: 'tool_result'; text: string; isError?: boolean }
   | {
       type: 'permission_request'
       requestId: string
@@ -35,6 +35,7 @@ export interface Conversation {
   updatedAt: number
   sessionId: string | null
   bubbles: Bubble[]
+  cwd?: string | null
 }
 
 export interface SkillSummary {
@@ -59,6 +60,16 @@ export type PermissionMode = 'auto' | 'ask'
 export interface AppSettings {
   permissionMode: PermissionMode
   autoScreen: boolean
+  // Gateway configured in-app (overrides .env). Empty = inherit from .env.
+  gatewayBaseUrl?: string
+  // Note: the API key never crosses the IPC boundary as plaintext after the
+  // first time the user types it. The renderer sees only `gatewayKeySet: boolean`.
+}
+
+export interface GatewayInfo {
+  gateway: string
+  configured: boolean
+  model: string
 }
 
 export type Verdict = 'SAFE' | 'CAUTION' | 'DANGEROUS'

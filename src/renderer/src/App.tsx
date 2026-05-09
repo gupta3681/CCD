@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
+import { RightSidebar, useCollapsedRightSidebar } from './components/RightSidebar'
 import { BubbleView } from './components/BubbleView'
 import { Settings } from './components/Settings'
 import type { Block, Bubble, ConversationSummary } from '../../preload'
@@ -34,11 +35,28 @@ interface SDKMessage {
   uuid?: string
   message?: {
     id?: string
-    content?: Array<{ type: string; text?: string; name?: string; input?: unknown }>
+    content?: Array<{
+      type: string
+      text?: string
+      name?: string
+      input?: unknown
+      // tool_result fields
+      content?: string | Array<{ type: string; text?: string }>
+      is_error?: boolean
+      tool_use_id?: string
+    }>
   }
   event?: StreamEvent
   result?: string
   subtype?: string
+}
+
+function extractToolResultText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((b) => (b && typeof b === 'object' && b.type === 'text' ? b.text || '' : ''))
+    .join('')
 }
 
 function makePermissionBubble(req: {
@@ -82,7 +100,9 @@ function App(): React.JSX.Element {
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID())
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
+  const [rightCollapsed, toggleRightCollapsed] = useCollapsedRightSidebar()
   const [view, setView] = useState<'chat' | 'settings'>('chat')
+  const [cwd, setCwd] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Tracks the SDK message.id of the assistant turn currently being streamed,
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
@@ -172,14 +192,25 @@ function App(): React.JSX.Element {
 
       // Tool results from the agent loop appear as user messages with tool_result content.
       if (msg.type === 'user' && msg.message?.content) {
-        const text = msg.message.content
-          .map((b) => (b.type === 'tool_result' ? `← tool result` : ''))
-          .join('')
-        if (!text) return
-        setBubbles((prev) => [
-          ...prev,
-          { id: `${runId}-tr-${prev.length}`, role: 'tool', blocks: [{ type: 'tool_result', text }] }
-        ])
+        const results = msg.message.content
+          .filter((b) => b.type === 'tool_result')
+          .map((b) => ({
+            text: extractToolResultText(b.content),
+            isError: !!b.is_error,
+            id: b.tool_use_id ?? crypto.randomUUID()
+          }))
+        if (results.length === 0) return
+        setBubbles((prev) => {
+          const next = [...prev]
+          for (const r of results) {
+            next.push({
+              id: `${runId}-tr-${r.id}`,
+              role: 'tool',
+              blocks: [{ type: 'tool_result', text: r.text, isError: r.isError }]
+            })
+          }
+          return next
+        })
         return
       }
 
@@ -282,6 +313,7 @@ function App(): React.JSX.Element {
     if (busy) return
     setConversationId(crypto.randomUUID())
     setBubbles([])
+    setCwd(null)
   }
 
   async function selectSession(id: string): Promise<void> {
@@ -290,6 +322,7 @@ function App(): React.JSX.Element {
     if (!conv) return
     setConversationId(id)
     setBubbles(conv.bubbles)
+    setCwd(conv.cwd ?? null)
   }
 
   async function deleteSession(id: string): Promise<void> {
@@ -297,8 +330,28 @@ function App(): React.JSX.Element {
     if (id === conversationId) {
       setConversationId(crypto.randomUUID())
       setBubbles([])
+      setCwd(null)
     }
     refreshList()
+  }
+
+  async function pickCwd(): Promise<void> {
+    const picked = await window.api.dialog.pickFolder(cwd ?? undefined)
+    if (!picked) return
+    setCwd(picked)
+    await window.api.conversations.setCwd(conversationId, picked)
+    refreshList()
+  }
+
+  async function clearCwd(): Promise<void> {
+    setCwd(null)
+    await window.api.conversations.setCwd(conversationId, null)
+    refreshList()
+  }
+
+  async function revealCwd(): Promise<void> {
+    if (!cwd) return
+    await window.api.shell.revealPath(cwd)
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -331,7 +384,7 @@ function App(): React.JSX.Element {
       {view === 'settings' && <Settings onClose={() => setView('chat')} />}
 
       {view === 'chat' && (
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 min-w-0 flex-col">
         <header className="flex items-center justify-between border-b border-parchment px-6 py-3 [-webkit-app-region:drag]">
           <div className="flex items-baseline gap-2 [-webkit-app-region:no-drag]">
             <span className="text-[11px] text-dusty">Powered by Claude · v0.1</span>
@@ -357,14 +410,32 @@ function App(): React.JSX.Element {
 
         <div ref={scrollerRef} className="flex-1 overflow-y-auto px-6 py-8">
           <div className="mx-auto flex max-w-[760px] flex-col gap-5">
-            {bubbles.length === 0 && (
+            {bubbles.length === 0 && gateway && !gateway.configured && (
+              <div className="mt-10 rounded-[12px] border border-onyx/15 bg-snow p-6">
+                <h1 className="font-serif text-[28px] font-[330] leading-tight text-ink">
+                  Welcome to Portico
+                </h1>
+                <p className="mt-2 text-[14px] text-graphite">
+                  Before you can chat, point Portico at your gateway and paste an API key. Portkey, direct Anthropic, or any compatible endpoint works.
+                </p>
+                <button
+                  onClick={() => setView('settings')}
+                  className="mt-4 rounded-[9.6px] bg-ink px-4 py-2 text-[13px] font-medium text-snow hover:opacity-90"
+                >
+                  Set up gateway
+                </button>
+                <p className="mt-3 text-[11px] text-dusty">
+                  The key is encrypted at rest using your OS keychain. Settings live under your Portico user-data folder.
+                </p>
+              </div>
+            )}
+            {bubbles.length === 0 && gateway?.configured && (
               <div className="mt-12 text-center">
                 <h1 className="font-serif text-[40px] font-[330] leading-tight text-ink">
                   What can I help you with?
                 </h1>
                 <p className="mt-3 text-[14px] text-dusty">
-                  Routed through {gateway?.gateway ?? 'your configured gateway'}. Full toolset — I can
-                  read, write, edit files, run shell commands, and search the web.
+                  Routed through {gateway.gateway}. {cwd ? <>Working in <code className="rounded bg-vellum px-1 text-[12px]">{cwd.split('/').slice(-2).join('/')}</code>.</> : 'No working folder set — pick one in the right panel for file operations.'}
                 </p>
               </div>
             )}
@@ -407,6 +478,17 @@ function App(): React.JSX.Element {
           </div>
         </div>
       </div>
+      )}
+
+      {view === 'chat' && (
+        <RightSidebar
+          collapsed={rightCollapsed}
+          onToggleCollapsed={toggleRightCollapsed}
+          cwd={cwd}
+          onChangeCwd={pickCwd}
+          onClearCwd={clearCwd}
+          onRevealCwd={revealCwd}
+        />
       )}
     </div>
   )

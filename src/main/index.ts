@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { config as loadDotenv } from 'dotenv'
@@ -99,6 +99,9 @@ function gatewayInfo(): { gateway: string; configured: boolean; model: string } 
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.portico.app')
+  // App settings override .env. Apply on startup so the SDK + screen client
+  // see the user's in-app gateway config from the first request.
+  appSettings.applyToEnv()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -129,8 +132,10 @@ app.whenReady().then(() => {
 
   // ── App settings (persisted at <userData>/portico/settings.json) ──────
   ipcMain.handle('appSettings:get', () => appSettings.get())
-  ipcMain.handle('appSettings:set', (_e, patch: Partial<appSettings.AppSettings>) =>
-    appSettings.set(patch)
+  ipcMain.handle(
+    'appSettings:set',
+    (_e, patch: Partial<appSettings.AppSettings> & { gatewayApiKey?: string | null }) =>
+      appSettings.set(patch)
   )
 
   // ── User settings (~/.claude) ─────────────────────────────────────────
@@ -157,6 +162,27 @@ app.whenReady().then(() => {
   ipcMain.handle('conversations:rename', (_e, id: string, title: string) =>
     conversations.rename(id, title)
   )
+  ipcMain.handle('conversations:setCwd', (_e, id: string, cwd: string | null) =>
+    conversations.setCwd(id, cwd)
+  )
+
+  // ── Native dialogs / shell ────────────────────────────────────────────
+  ipcMain.handle('dialog:pickFolder', async (event, defaultPath?: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const opts: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+      ...(defaultPath ? { defaultPath } : {})
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, opts)
+      : await dialog.showOpenDialog(opts)
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('shell:revealPath', (_e, p: string) => {
+    shell.showItemInFolder(p)
+  })
 
   // ── Agent query ───────────────────────────────────────────────────────
   ipcMain.handle(
@@ -168,6 +194,7 @@ app.whenReady().then(() => {
       }
 
       const resumeId = conversations.getSessionId(conversationId)
+      const cwd = conversations.getCwd(conversationId) || undefined
       const controller = new AbortController()
       activeRuns.set(runId, controller)
 
@@ -182,6 +209,7 @@ app.whenReady().then(() => {
             systemPrompt: systemPromptFor(),
             includePartialMessages: true,
             abortController: controller,
+            ...(cwd ? { cwd } : {}),
             ...(askMode
               ? {
                   permissionMode: 'default',

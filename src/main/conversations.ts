@@ -72,6 +72,20 @@ export function setSessionId(id: string, sessionId: string): void {
   persist()
 }
 
+export function getCwd(id: string): string | null {
+  return load()[id]?.cwd ?? null
+}
+
+export function setCwd(id: string, cwd: string | null): void {
+  const store = load()
+  const now = Date.now()
+  const existing = store[id]
+  store[id] = existing
+    ? { ...existing, cwd, updatedAt: now }
+    : { id, title: 'New chat', createdAt: now, updatedAt: now, sessionId: null, bubbles: [], cwd }
+  persist()
+}
+
 function bubbleText(b: Bubble): string {
   if (b.text) return b.text
   if (!b.blocks) return ''
