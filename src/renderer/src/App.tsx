@@ -41,6 +41,36 @@ interface SDKMessage {
   subtype?: string
 }
 
+function makePermissionBubble(req: {
+  requestId: string
+  toolName: string
+  input: Record<string, unknown>
+  screening: import('../../preload').Screening | null
+}): Bubble {
+  return {
+    id: `perm-${req.requestId}`,
+    role: 'permission',
+    blocks: [
+      {
+        type: 'permission_request',
+        requestId: req.requestId,
+        toolName: req.toolName,
+        input: req.input,
+        screening: req.screening,
+        decision: null
+      }
+    ]
+  }
+}
+
+function upsertBubble(prev: Bubble[], bubble: Bubble): Bubble[] {
+  const idx = prev.findIndex((b) => b.id === bubble.id)
+  if (idx === -1) return [...prev, bubble]
+  const next = [...prev]
+  next[idx] = bubble
+  return next
+}
+
 function App(): React.JSX.Element {
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [input, setInput] = useState('')
@@ -149,49 +179,18 @@ function App(): React.JSX.Element {
     })
 
     const offScreening = window.api.onPermissionScreening((s) => {
-      // Insert a placeholder permission bubble so the user sees "Screening…"
-      setBubbles((prev) => [
-        ...prev,
-        {
-          id: `perm-${s.requestId}`,
-          role: 'permission',
-          blocks: [
-            {
-              type: 'permission_request',
-              requestId: s.requestId,
-              toolName: s.toolName,
-              input: {},
-              screening: null,
-              decision: null
-            }
-          ]
-        }
-      ])
+      const placeholder = makePermissionBubble({
+        requestId: s.requestId,
+        toolName: s.toolName,
+        input: {},
+        screening: null
+      })
+      setBubbles((prev) => upsertBubble(prev, placeholder))
     })
 
     const offRequest = window.api.onPermissionRequest((req) => {
-      setBubbles((prev) => {
-        const id = `perm-${req.requestId}`
-        const idx = prev.findIndex((b) => b.id === id)
-        const newBubble = {
-          id,
-          role: 'permission' as const,
-          blocks: [
-            {
-              type: 'permission_request' as const,
-              requestId: req.requestId,
-              toolName: req.toolName,
-              input: req.input,
-              screening: req.screening,
-              decision: null
-            }
-          ]
-        }
-        if (idx === -1) return [...prev, newBubble]
-        const next = [...prev]
-        next[idx] = newBubble
-        return next
-      })
+      const bubble = makePermissionBubble(req)
+      setBubbles((prev) => upsertBubble(prev, bubble))
     })
 
     const offDone = window.api.onDone(() => {

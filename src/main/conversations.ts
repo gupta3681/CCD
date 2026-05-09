@@ -1,57 +1,16 @@
-import { app } from 'electron'
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import type { Bubble, Conversation, ConversationSummary } from '../shared/types'
+import { atomicWrite, porticoDir } from './util'
 
-export type Block =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; thinking: string }
-  | { type: 'tool_use'; name: string; input: unknown }
-  | { type: 'tool_result'; text: string }
-  | {
-      type: 'permission_request'
-      requestId: string
-      toolName: string
-      input: Record<string, unknown>
-      screening: { summary: string; verdict: 'SAFE' | 'CAUTION' | 'DANGEROUS'; reason: string; ms: number } | null
-      decision: { allow: boolean; at: number } | null
-    }
-
-export interface Bubble {
-  id: string
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'permission'
-  // New shape: structured content blocks. Plain `text` is kept for backward
-  // compatibility with conversations saved before streaming landed.
-  blocks?: Block[]
-  text?: string
-}
-
-export interface Conversation {
-  id: string
-  title: string
-  createdAt: number
-  updatedAt: number
-  sessionId: string | null
-  bubbles: Bubble[]
-}
-
-export interface ConversationSummary {
-  id: string
-  title: string
-  updatedAt: number
-}
+export type { Block, Bubble, Conversation, ConversationSummary } from '../shared/types'
 
 type Store = Record<string, Conversation>
 
 let cache: Store | null = null
 
-function dataDir(): string {
-  const dir = join(app.getPath('userData'), 'portico')
-  mkdirSync(dir, { recursive: true })
-  return dir
-}
-
 function dataFile(): string {
-  return join(dataDir(), 'conversations.json')
+  return join(porticoDir(), 'conversations.json')
 }
 
 function migrate(b: Bubble): Bubble {
@@ -68,8 +27,7 @@ function load(): Store {
     return cache
   }
   try {
-    const raw = readFileSync(file, 'utf-8')
-    const parsed = JSON.parse(raw) as Store
+    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as Store
     for (const id of Object.keys(parsed)) {
       parsed[id].bubbles = parsed[id].bubbles.map(migrate)
     }
@@ -83,10 +41,7 @@ function load(): Store {
 
 function persist(): void {
   if (!cache) return
-  const file = dataFile()
-  const tmp = `${file}.tmp`
-  writeFileSync(tmp, JSON.stringify(cache, null, 2), 'utf-8')
-  renameSync(tmp, file)
+  atomicWrite(dataFile(), JSON.stringify(cache, null, 2))
 }
 
 export function list(): ConversationSummary[] {
@@ -137,9 +92,9 @@ export function save(id: string, bubbles: Bubble[]): ConversationSummary {
   const store = load()
   const now = Date.now()
   const existing = store[id]
+  const title = deriveTitle(bubbles)
   // Preserve sessionId if the init event already wrote a stub record before
   // the renderer's first save call.
-  const title = deriveTitle(bubbles)
   const conv: Conversation = existing
     ? { ...existing, title, bubbles, updatedAt: now }
     : { id, title, createdAt: now, updatedAt: now, sessionId: null, bubbles }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Block, Bubble, Verdict } from '../../../preload'
+import { ArrowIcon, SparkIcon } from './Icons'
 
 interface Props {
   bubble: Bubble
@@ -197,23 +198,3 @@ function PermissionPrompt({
   )
 }
 
-function SparkIcon(): React.JSX.Element {
-  return (
-    <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M8 1.5l1.5 4.5L14 7.5 9.5 9 8 14.5 6.5 9 2 7.5 6.5 6 8 1.5z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function ArrowIcon(): React.JSX.Element {
-  return (
-    <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-      <path d="M3 8h10m-4-4l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  )
-}

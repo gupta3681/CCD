@@ -1,13 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { Screening } from '../shared/types'
 
-export type Verdict = 'SAFE' | 'CAUTION' | 'DANGEROUS'
-
-export interface Screening {
-  summary: string
-  verdict: Verdict
-  reason: string
-  ms: number
-}
+export type { Verdict, Screening } from '../shared/types'
 
 const SYSTEM_PROMPT = `You are a security screener for an autonomous coding agent running on a developer's laptop. The agent is about to call a tool. In one short sentence, say what the tool call will actually do. Then rate the call.
 
@@ -43,7 +37,7 @@ function parseVerdict(raw: string): Screening | null {
     if (verdict !== 'SAFE' && verdict !== 'CAUTION' && verdict !== 'DANGEROUS') return null
     return {
       summary: String(parsed.summary ?? '').slice(0, 240),
-      verdict: verdict as Verdict,
+      verdict,
       reason: String(parsed.reason ?? '').slice(0, 400),
       ms: 0 // overwritten by caller
     }

@@ -46,6 +46,15 @@ function systemPromptFor():
   return { type: 'preset', preset: 'claude_code', append: PORTICO_APPEND }
 }
 
+// Auto-deny all pending permissions, e.g. on window close so the SDK promise
+// resolves and any in-flight query exits cleanly instead of leaking.
+function denyAllPending(reason: string): void {
+  for (const [reqId, p] of pendingPermissions) {
+    p.resolve({ allow: false, reason })
+    pendingPermissions.delete(reqId)
+  }
+}
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -63,6 +72,7 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.on('closed', () => denyAllPending('window closed'))
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -99,7 +109,6 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:cancel', (_e, runId: string) => {
     activeRuns.get(runId)?.abort()
     activeRuns.delete(runId)
-    // Auto-deny any pending permissions for this run on cancel.
     for (const [reqId, p] of pendingPermissions) {
       if (reqId.startsWith(`${runId}:`)) {
         p.resolve({ allow: false, reason: 'cancelled' })

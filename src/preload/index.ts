@@ -1,88 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type {
+  AppSettings,
+  Bubble,
+  Conversation,
+  ConversationSummary,
+  PermissionRequest,
+  PermissionScreeningStart,
+  Skill,
+  SkillSummary,
+  SettingsPaths
+} from '../shared/types'
+
+// Re-export shared types so the renderer can keep importing from '../../preload'.
+export type {
+  AppSettings,
+  Block,
+  Bubble,
+  Conversation,
+  ConversationSummary,
+  PermissionMode,
+  PermissionRequest,
+  PermissionScreeningStart,
+  Screening,
+  Skill,
+  SkillSummary,
+  SettingsPaths,
+  Verdict
+} from '../shared/types'
 
 type Disposer = () => void
-
-export type Block =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; thinking: string }
-  | { type: 'tool_use'; name: string; input: unknown }
-  | { type: 'tool_result'; text: string }
-  | {
-      type: 'permission_request'
-      requestId: string
-      toolName: string
-      input: Record<string, unknown>
-      screening: Screening | null
-      decision: { allow: boolean; at: number } | null
-    }
-
-export interface Bubble {
-  id: string
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'permission'
-  blocks?: Block[]
-  text?: string
-}
-
-export interface ConversationSummary {
-  id: string
-  title: string
-  updatedAt: number
-}
-
-export interface Conversation {
-  id: string
-  title: string
-  createdAt: number
-  updatedAt: number
-  sessionId: string | null
-  bubbles: Bubble[]
-}
-
-export interface SkillSummary {
-  name: string
-  path: string
-  description: string
-}
-
-export interface Skill extends SkillSummary {
-  content: string
-}
-
-export interface SettingsPaths {
-  home: string
-  claudeDir: string
-  skillsDir: string
-  claudeMd: string
-}
-
-export type PermissionMode = 'auto' | 'ask'
-
-export interface AppSettings {
-  permissionMode: PermissionMode
-  autoScreen: boolean
-}
-
-export type Verdict = 'SAFE' | 'CAUTION' | 'DANGEROUS'
-
-export interface Screening {
-  summary: string
-  verdict: Verdict
-  reason: string
-  ms: number
-}
-
-export interface PermissionRequest {
-  requestId: string
-  toolName: string
-  input: Record<string, unknown>
-  screening: Screening | null
-}
-
-export interface PermissionScreeningStart {
-  requestId: string
-  toolName: string
-}
 
 const api = {
   gatewayInfo: (): Promise<{ gateway: string; configured: boolean; model: string }> =>
@@ -93,8 +40,10 @@ const api = {
 
   cancel: (runId: string): Promise<void> => ipcRenderer.invoke('agent:cancel', runId),
 
-  respondPermission: (requestId: string, decision: { allow: boolean; reason?: string }): Promise<void> =>
-    ipcRenderer.invoke('permission:respond', requestId, decision),
+  respondPermission: (
+    requestId: string,
+    decision: { allow: boolean; reason?: string }
+  ): Promise<void> => ipcRenderer.invoke('permission:respond', requestId, decision),
 
   appSettings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke('appSettings:get'),
@@ -128,7 +77,8 @@ const api = {
     },
     skills: {
       list: (): Promise<SkillSummary[]> => ipcRenderer.invoke('settings:skills:list'),
-      read: (name: string): Promise<Skill | null> => ipcRenderer.invoke('settings:skills:read', name),
+      read: (name: string): Promise<Skill | null> =>
+        ipcRenderer.invoke('settings:skills:read', name),
       write: (name: string, content: string): Promise<{ path: string }> =>
         ipcRenderer.invoke('settings:skills:write', name, content),
       create: (name: string): Promise<{ path: string }> =>

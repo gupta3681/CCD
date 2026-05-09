@@ -1,31 +1,15 @@
 import { homedir } from 'os'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-  renameSync
-} from 'fs'
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'fs'
 import { join, basename } from 'path'
+import type { Skill, SkillSummary, SettingsPaths } from '../shared/types'
+import { atomicWrite } from './util'
+
+export type { Skill, SkillSummary, SettingsPaths } from '../shared/types'
 
 const HOME = homedir()
 const CLAUDE_DIR = join(HOME, '.claude')
 const SKILLS_DIR = join(CLAUDE_DIR, 'skills')
 const CLAUDE_MD = join(CLAUDE_DIR, 'CLAUDE.md')
-
-function ensureDir(p: string): void {
-  mkdirSync(p, { recursive: true })
-}
-
-function atomicWrite(file: string, content: string): void {
-  ensureDir(join(file, '..'))
-  const tmp = `${file}.tmp`
-  writeFileSync(tmp, content, 'utf-8')
-  renameSync(tmp, file)
-}
 
 // ── CLAUDE.md ──────────────────────────────────────────────────────────
 
@@ -40,16 +24,6 @@ export function writeClaudeMd(content: string): { path: string } {
 }
 
 // ── Skills ─────────────────────────────────────────────────────────────
-
-export interface SkillSummary {
-  name: string
-  path: string
-  description: string
-}
-
-export interface Skill extends SkillSummary {
-  content: string // full SKILL.md including frontmatter
-}
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/
 
@@ -147,6 +121,6 @@ export function deleteSkill(name: string): void {
   rmSync(dir, { recursive: true, force: true })
 }
 
-export function paths(): { home: string; claudeDir: string; skillsDir: string; claudeMd: string } {
+export function paths(): SettingsPaths {
   return { home: HOME, claudeDir: CLAUDE_DIR, skillsDir: SKILLS_DIR, claudeMd: CLAUDE_MD }
 }

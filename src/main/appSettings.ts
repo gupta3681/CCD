@@ -1,13 +1,9 @@
-import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import type { AppSettings } from '../shared/types'
+import { atomicWrite, porticoDir } from './util'
 
-export type PermissionMode = 'auto' | 'ask'
-
-export interface AppSettings {
-  permissionMode: PermissionMode
-  autoScreen: boolean
-}
+export type { AppSettings, PermissionMode } from '../shared/types'
 
 const DEFAULTS: AppSettings = {
   permissionMode: 'auto',
@@ -17,9 +13,7 @@ const DEFAULTS: AppSettings = {
 let cache: AppSettings | null = null
 
 function file(): string {
-  const dir = join(app.getPath('userData'), 'portico')
-  mkdirSync(dir, { recursive: true })
-  return join(dir, 'settings.json')
+  return join(porticoDir(), 'settings.json')
 }
 
 export function get(): AppSettings {
@@ -41,9 +35,6 @@ export function get(): AppSettings {
 export function set(patch: Partial<AppSettings>): AppSettings {
   const next = { ...get(), ...patch }
   cache = next
-  const f = file()
-  const tmp = `${f}.tmp`
-  writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')
-  renameSync(tmp, f)
+  atomicWrite(file(), JSON.stringify(next, null, 2))
   return next
 }
