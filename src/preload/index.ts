@@ -38,6 +38,8 @@ const api = {
   query: (prompt: string, runId: string, conversationId: string): Promise<void> =>
     ipcRenderer.invoke('agent:query', prompt, runId, conversationId),
 
+  cancel: (runId: string): Promise<void> => ipcRenderer.invoke('agent:cancel', runId),
+
   conversations: {
     list: (): Promise<ConversationSummary[]> => ipcRenderer.invoke('conversations:list'),
     get: (id: string): Promise<Conversation | null> => ipcRenderer.invoke('conversations:get', id),

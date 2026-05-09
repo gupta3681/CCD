@@ -44,6 +44,7 @@ function App(): React.JSX.Element {
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [gateway, setGateway] = useState<{ gateway: string; configured: boolean; model: string } | null>(
     null
   )
@@ -145,7 +146,10 @@ function App(): React.JSX.Element {
       // stream events already built. Ignore.
     })
 
-    const offDone = window.api.onDone(() => setBusy(false))
+    const offDone = window.api.onDone(() => {
+      setBusy(false)
+      setActiveRunId(null)
+    })
     const offErr = window.api.onError((runId, err) => {
       setBubbles((prev) => [
         ...prev,
@@ -156,6 +160,7 @@ function App(): React.JSX.Element {
         }
       ])
       setBusy(false)
+      setActiveRunId(null)
     })
 
     return () => {
@@ -189,7 +194,13 @@ function App(): React.JSX.Element {
     ])
     setInput('')
     setBusy(true)
+    setActiveRunId(runId)
     await window.api.query(prompt, runId, conversationId)
+  }
+
+  async function stop(): Promise<void> {
+    if (!activeRunId) return
+    await window.api.cancel(activeRunId)
   }
 
   async function newSession(): Promise<void> {
@@ -289,13 +300,24 @@ function App(): React.JSX.Element {
               rows={2}
               disabled={busy}
             />
-            <button
-              onClick={send}
-              disabled={busy || !input.trim()}
-              className="h-[52px] rounded-[9.6px] bg-ink px-5 text-[15px] font-medium text-snow transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              Send
-            </button>
+            {busy ? (
+              <button
+                onClick={stop}
+                className="flex h-[52px] items-center gap-2 rounded-[9.6px] border border-onyx/20 bg-snow px-5 text-[15px] font-medium text-ink transition-opacity hover:bg-vellum"
+                title="Stop generating"
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-ink" />
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={send}
+                disabled={!input.trim()}
+                className="h-[52px] rounded-[9.6px] bg-ink px-5 text-[15px] font-medium text-snow transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                Send
+              </button>
+            )}
           </div>
         </div>
       </div>

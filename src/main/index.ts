@@ -8,9 +8,10 @@ import * as conversations from './conversations'
 
 loadDotenv()
 
-// V1 toolset: read-only. Agent can answer questions and search the web,
-// but cannot write, edit, or run shell commands. Write/Bash come back when
-// we ship the permission-prompt UI in v1.1.
+// V1 toolset: read-only. allowedTools auto-approves these, disallowedTools
+// hard-denies the destructive ones. Both lists are needed because under
+// permissionMode: 'bypassPermissions' a tool not in allowedTools is still
+// auto-approved unless explicitly disallowed.
 const READ_ONLY_TOOLS = [
   'Read',
   'Glob',
@@ -20,6 +21,11 @@ const READ_ONLY_TOOLS = [
   'TodoWrite',
   'AskUserQuestion'
 ]
+
+const DENIED_TOOLS = ['Write', 'Edit', 'Bash', 'NotebookEdit', 'KillShell']
+
+// runId -> AbortController, so the renderer can cancel a streaming query.
+const activeRuns = new Map<string, AbortController>()
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
@@ -97,6 +103,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('gateway:info', () => gatewayInfo())
 
+  ipcMain.handle('agent:cancel', (_e, runId: string) => {
+    activeRuns.get(runId)?.abort()
+    activeRuns.delete(runId)
+  })
+
   // ── Conversations ─────────────────────────────────────────────────────
   ipcMain.handle('conversations:list', () => conversations.list())
   ipcMain.handle('conversations:get', (_e, id: string) => conversations.get(id))
@@ -118,6 +129,8 @@ app.whenReady().then(() => {
       }
 
       const resumeId = conversations.getSessionId(conversationId)
+      const controller = new AbortController()
+      activeRuns.set(runId, controller)
 
       try {
         const result = query({
@@ -126,10 +139,10 @@ app.whenReady().then(() => {
             model: modelFor(),
             systemPrompt: systemPromptFor(),
             allowedTools: READ_ONLY_TOOLS,
+            disallowedTools: DENIED_TOOLS,
             permissionMode: 'bypassPermissions',
-            // Stream partial events so the renderer can show text + thinking
-            // as they arrive, instead of waiting for the full assistant turn.
             includePartialMessages: true,
+            abortController: controller,
             ...(resumeId ? { resume: resumeId } : {})
           }
         })
@@ -147,11 +160,17 @@ app.whenReady().then(() => {
         }
         send('agent:done', null)
       } catch (err) {
-        const error =
-          err instanceof Error
-            ? { message: err.message, stack: err.stack }
-            : { message: String(err) }
-        send('agent:error', error)
+        if (controller.signal.aborted) {
+          send('agent:done', null) // user-initiated stop, not a real error
+        } else {
+          const error =
+            err instanceof Error
+              ? { message: err.message, stack: err.stack }
+              : { message: String(err) }
+          send('agent:error', error)
+        }
+      } finally {
+        activeRuns.delete(runId)
       }
     }
   )
