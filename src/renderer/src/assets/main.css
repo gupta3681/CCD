@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Vellum palette — see ReferenceDesign.md */
+  --color-vellum: #faf9f5;
+  --color-ink: #141413;
+  --color-onyx: #1f1e1d;
+  --color-graphite: #3d3d3a;
+  --color-dusty: #73726c;
+  --color-stone: #9c9a92;
+  --color-parchment: #dedcd1;
+  --color-snow: #ffffff;
+  --color-azure: #ccdbe8;
+  --color-terra: #d97757;
+
+  --font-serif: 'Lora', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --radius-card: 9.6px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-vellum);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--color-azure);
+  }
+}
