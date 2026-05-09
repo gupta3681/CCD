@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import type { ConversationSummary } from '../../../preload'
 import { GearIcon, PanelIcon, PlusIcon, TrashIcon } from './Icons'
 
+// macOS draws traffic-light buttons on top of the window content with
+// titleBarStyle: 'hiddenInset'. Reserve a strip at the top of the sidebar so
+// they don't overlap the wordmark / icons.
+const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
+
 interface Props {
   collapsed: boolean
   onToggleCollapsed: () => void
@@ -43,7 +48,11 @@ export function Sidebar(props: Props): React.JSX.Element {
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-12 flex-col items-center gap-2 border-r border-parchment bg-vellum py-3 [-webkit-app-region:drag]">
+      <aside
+        className={`flex h-full w-12 flex-col items-center gap-2 border-r border-parchment bg-vellum pb-3 [-webkit-app-region:drag] ${
+          IS_MAC ? 'pt-10' : 'pt-3'
+        }`}
+      >
         <button
           onClick={onToggleCollapsed}
           title="Expand sidebar"
@@ -74,7 +83,11 @@ export function Sidebar(props: Props): React.JSX.Element {
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-parchment bg-vellum">
-      <div className="flex items-center justify-between px-3 py-3 [-webkit-app-region:drag]">
+      <div
+        className={`flex items-center justify-between px-3 pb-3 [-webkit-app-region:drag] ${
+          IS_MAC ? 'pt-10' : 'pt-3'
+        }`}
+      >
         <div className="font-serif text-[15px] font-[400] text-ink [-webkit-app-region:no-drag]">
           Portico
         </div>
