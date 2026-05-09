@@ -175,3 +175,79 @@ describe('CLAUDE.md read/write', () => {
     expect(existsSync(`${us.paths().claudeMd}.tmp`)).toBe(false)
   })
 })
+
+describe('soul.md read/write', () => {
+  it('readSoul returns exists=false when no file', async () => {
+    const us = await import('../src/main/userSettings')
+    const r = us.readSoul()
+    expect(r.exists).toBe(false)
+    expect(r.content).toBe('')
+  })
+
+  it('writeSoul then readSoul round-trips', async () => {
+    const us = await import('../src/main/userSettings')
+    us.writeSoul('# Soul\n\nBe terse.')
+    const r = us.readSoul()
+    expect(r.exists).toBe(true)
+    expect(r.content).toBe('# Soul\n\nBe terse.')
+  })
+
+  it('soul.md path is alongside CLAUDE.md', async () => {
+    const us = await import('../src/main/userSettings')
+    const p = us.paths()
+    expect(p.soulMd.endsWith('/soul.md')).toBe(true)
+    expect(p.soulMd.startsWith(p.claudeDir)).toBe(true)
+  })
+})
+
+describe('first-run profile seeding', () => {
+  it('isFirstRun is true when soul.md does not exist', async () => {
+    const us = await import('../src/main/userSettings')
+    expect(us.isFirstRun()).toBe(true)
+  })
+
+  it('isFirstRun is false after seedProfile', async () => {
+    const us = await import('../src/main/userSettings')
+    us.seedProfile({ persona: 'developer', name: 'Aryan', workingOn: 'Portico' })
+    expect(us.isFirstRun()).toBe(false)
+  })
+
+  it('isFirstRun is false after skipProfileSetup (writes empty soul.md)', async () => {
+    const us = await import('../src/main/userSettings')
+    us.skipProfileSetup()
+    expect(us.isFirstRun()).toBe(false)
+    expect(us.readSoul().content).toBe('')
+  })
+
+  it('seedProfile writes both CLAUDE.md and soul.md', async () => {
+    const us = await import('../src/main/userSettings')
+    us.seedProfile({ persona: 'pm', name: 'Binil', workingOn: 'Roadmap planning' })
+    expect(us.readClaudeMd().content).toContain('## About me')
+    expect(us.readClaudeMd().content).toContain('Binil')
+    expect(us.readClaudeMd().content).toContain('project manager')
+    expect(us.readClaudeMd().content).toContain('Roadmap planning')
+    expect(us.readSoul().content).toContain('Plain language')
+  })
+
+  it('seedProfile appends to (does not overwrite) existing CLAUDE.md', async () => {
+    const us = await import('../src/main/userSettings')
+    us.writeClaudeMd('# My existing memory\n\nLots of important stuff here.')
+    us.seedProfile({ persona: 'developer', name: 'Aryan', workingOn: 'X' })
+    const c = us.readClaudeMd().content
+    expect(c).toContain('My existing memory')
+    expect(c).toContain('Lots of important stuff')
+    expect(c).toContain('## About me')
+    expect(c).toContain('Aryan')
+  })
+
+  it('each persona seeds a distinct soul.md template', async () => {
+    const us = await import('../src/main/userSettings')
+    us.seedProfile({ persona: 'developer', name: 'X', workingOn: 'Y' })
+    const dev = us.readSoul().content
+    us.seedProfile({ persona: 'director', name: 'X', workingOn: 'Y' })
+    const dir = us.readSoul().content
+    expect(dev).not.toBe(dir)
+    expect(dev).toContain('Skip preamble')
+    expect(dir).toContain('bottom line')
+  })
+})

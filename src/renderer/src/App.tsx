@@ -4,6 +4,7 @@ import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
 import { RightSidebar, useCollapsedRightSidebar } from './components/RightSidebar'
 import { BubbleView } from './components/BubbleView'
 import { Settings } from './components/Settings'
+import { PersonaWizard } from './components/PersonaWizard'
 import type { Block, Bubble, ConversationSummary } from '../../preload'
 
 // SDK partial-message stream events (see Anthropic SDK BetaRawMessageStreamEvent).
@@ -117,6 +118,7 @@ function App(): React.JSX.Element {
   const [cwd, setCwd] = useState<string | null>(null)
   const [trustProject, setTrustProject] = useState<boolean>(false)
   const [contextTokens, setContextTokens] = useState<number | null>(null)
+  const [firstRun, setFirstRun] = useState<boolean>(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Tracks the SDK message.id of the assistant turn currently being streamed,
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
@@ -197,6 +199,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     window.api.gatewayInfo().then(setGateway)
+    window.api.settings.profile.isFirstRun().then(setFirstRun)
     refreshList()
 
     const offMsg = window.api.onMessage((runId, raw) => {
@@ -498,7 +501,10 @@ function App(): React.JSX.Element {
                 </p>
               </div>
             )}
-            {bubbles.length === 0 && gateway?.configured && (
+            {bubbles.length === 0 && gateway?.configured && firstRun && (
+              <PersonaWizard onDone={() => setFirstRun(false)} />
+            )}
+            {bubbles.length === 0 && gateway?.configured && !firstRun && (
               <div className="mt-12 text-center">
                 <h1 className="font-serif text-[40px] font-[330] leading-tight text-ink">
                   What can I help you with?

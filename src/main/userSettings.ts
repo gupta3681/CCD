@@ -1,15 +1,18 @@
 import { homedir } from 'os'
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'fs'
 import { join, basename } from 'path'
-import type { Skill, SkillSummary, SettingsPaths } from '../shared/types'
+import type { Persona, Skill, SkillSummary, SettingsPaths } from '../shared/types'
 import { atomicWrite } from './util'
 
-export type { Skill, SkillSummary, SettingsPaths } from '../shared/types'
+export type { Persona, Skill, SkillSummary, SettingsPaths } from '../shared/types'
 
 const HOME = homedir()
 const CLAUDE_DIR = join(HOME, '.claude')
 const SKILLS_DIR = join(CLAUDE_DIR, 'skills')
 const CLAUDE_MD = join(CLAUDE_DIR, 'CLAUDE.md')
+// soul.md sits alongside CLAUDE.md so it's easy to back up via dotfiles, but
+// no other tool (Claude Code TUI, Cowork) reads it — it's Portico-specific.
+const SOUL_MD = join(CLAUDE_DIR, 'soul.md')
 
 // ── CLAUDE.md ──────────────────────────────────────────────────────────
 
@@ -21,6 +24,93 @@ export function readClaudeMd(): { exists: boolean; path: string; content: string
 export function writeClaudeMd(content: string): { path: string } {
   atomicWrite(CLAUDE_MD, content)
   return { path: CLAUDE_MD }
+}
+
+// ── soul.md ────────────────────────────────────────────────────────────
+
+export function readSoul(): { exists: boolean; path: string; content: string } {
+  if (!existsSync(SOUL_MD)) return { exists: false, path: SOUL_MD, content: '' }
+  return { exists: true, path: SOUL_MD, content: readFileSync(SOUL_MD, 'utf-8') }
+}
+
+export function writeSoul(content: string): { path: string } {
+  atomicWrite(SOUL_MD, content)
+  return { path: SOUL_MD }
+}
+
+// ── First-run profile seeding ──────────────────────────────────────────
+
+const SOUL_TEMPLATES: Record<Persona, string> = {
+  developer: `# How to respond
+
+- Skip preamble. Get to the point.
+- Use code blocks freely; assume I read code.
+- When I'm wrong, say so directly with the fix.
+- Default to terse markdown, not prose.
+`,
+  pm: `# How to respond
+
+- Plain language. Avoid jargon unless I use it first.
+- Confirm before destructive actions (file deletes, force-pushes, etc.).
+- When you give options, format as a table or numbered list.
+- Surface trade-offs, not just a recommendation.
+`,
+  director: `# How to respond
+
+- Lead with the bottom line. Detail on demand.
+- Frame in terms of risk, time, and cost.
+- One-paragraph answers when possible. Tables when comparing.
+- If I ask "should we do X," give an opinion, not just options.
+`
+}
+
+const PERSONA_LABELS: Record<Persona, string> = {
+  developer: 'simple developer',
+  pm: 'project manager',
+  director: 'director and above'
+}
+
+/**
+ * Wizard flow: writes initial content into CLAUDE.md (appended, never
+ * overwriting) and seeds soul.md with the persona template (always
+ * overwrites soul.md — its existence is our "wizard already ran" marker,
+ * so writing here is the marker-setting action).
+ */
+export function seedProfile(input: {
+  persona: Persona
+  name: string
+  workingOn: string
+}): { claudeMdPath: string; soulMdPath: string } {
+  const { persona, name, workingOn } = input
+
+  const aboutSection =
+    `\n## About me\n\n` +
+    `- Name: ${name.trim() || '(unspecified)'}\n` +
+    `- Role: ${PERSONA_LABELS[persona]}\n` +
+    `- Working on: ${workingOn.trim() || '(unspecified)'}\n`
+
+  // Append (don't overwrite) — the user may have existing CLAUDE.md content
+  // from gstack or other sources we mustn't trample.
+  const existing = readClaudeMd()
+  const newContent = existing.exists ? `${existing.content.trimEnd()}\n${aboutSection}` : aboutSection.trimStart()
+  atomicWrite(CLAUDE_MD, newContent)
+
+  // soul.md is Portico-owned, always overwrite with the persona template.
+  atomicWrite(SOUL_MD, SOUL_TEMPLATES[persona])
+
+  return { claudeMdPath: CLAUDE_MD, soulMdPath: SOUL_MD }
+}
+
+/**
+ * The wizard fires only when soul.md doesn't exist. "Skip" still writes an
+ * empty soul.md so the wizard doesn't reappear next launch.
+ */
+export function skipProfileSetup(): void {
+  atomicWrite(SOUL_MD, '')
+}
+
+export function isFirstRun(): boolean {
+  return !existsSync(SOUL_MD)
 }
 
 // ── Skills ─────────────────────────────────────────────────────────────
@@ -122,5 +212,11 @@ export function deleteSkill(name: string): void {
 }
 
 export function paths(): SettingsPaths {
-  return { home: HOME, claudeDir: CLAUDE_DIR, skillsDir: SKILLS_DIR, claudeMd: CLAUDE_MD }
+  return {
+    home: HOME,
+    claudeDir: CLAUDE_DIR,
+    skillsDir: SKILLS_DIR,
+    claudeMd: CLAUDE_MD,
+    soulMd: SOUL_MD
+  }
 }

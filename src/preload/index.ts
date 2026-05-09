@@ -19,6 +19,7 @@ export type {
   Bubble,
   Conversation,
   ConversationSummary,
+  Persona,
   PermissionMode,
   PermissionRequest,
   PermissionScreeningStart,
@@ -87,6 +88,22 @@ const api = {
       create: (name: string): Promise<{ path: string }> =>
         ipcRenderer.invoke('settings:skills:create', name),
       delete: (name: string): Promise<void> => ipcRenderer.invoke('settings:skills:delete', name)
+    },
+    soul: {
+      read: (): Promise<{ exists: boolean; path: string; content: string }> =>
+        ipcRenderer.invoke('settings:soul:read'),
+      write: (content: string): Promise<{ path: string }> =>
+        ipcRenderer.invoke('settings:soul:write', content)
+    },
+    profile: {
+      isFirstRun: (): Promise<boolean> => ipcRenderer.invoke('settings:profile:isFirstRun'),
+      seed: (input: {
+        persona: 'developer' | 'pm' | 'director'
+        name: string
+        workingOn: string
+      }): Promise<{ claudeMdPath: string; soulMdPath: string }> =>
+        ipcRenderer.invoke('settings:profile:seed', input),
+      skip: (): Promise<void> => ipcRenderer.invoke('settings:profile:skip')
     }
   },
 

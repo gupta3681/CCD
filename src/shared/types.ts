@@ -79,7 +79,17 @@ export interface SettingsPaths {
   claudeDir: string
   skillsDir: string
   claudeMd: string
+  soulMd: string
 }
+
+/**
+ * The three persona presets the first-run wizard offers. Persona is NOT a
+ * stored field — picking one is a one-time seeding choice that writes
+ * default content into ~/.claude/CLAUDE.md (about-me section) and
+ * ~/.claude/soul.md (response style template). The user (or the agent)
+ * edits both files freely thereafter.
+ */
+export type Persona = 'developer' | 'pm' | 'director'
 
 export type PermissionMode = 'auto' | 'ask'
 

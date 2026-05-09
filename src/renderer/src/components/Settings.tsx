@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../preload'
 
-type Tab = 'gateway' | 'permissions' | 'memory' | 'skills'
+type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills'
 
 export function Settings({ onClose }: { onClose: () => void }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('gateway')
@@ -30,7 +30,8 @@ export function Settings({ onClose }: { onClose: () => void }): React.JSX.Elemen
         <nav className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-parchment py-4">
           <TabBtn active={tab === 'gateway'} onClick={() => setTab('gateway')} label="Gateway" hint="Portkey · API key" />
           <TabBtn active={tab === 'permissions'} onClick={() => setTab('permissions')} label="Permissions" hint="Tool approvals" />
-          <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} label="Memory" hint="CLAUDE.md" />
+          <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} label="Memory" hint="CLAUDE.md — about you" />
+          <TabBtn active={tab === 'soul'} onClick={() => setTab('soul')} label="Soul" hint="soul.md — how to respond" />
           <TabBtn active={tab === 'skills'} onClick={() => setTab('skills')} label="Skills" hint="~/.claude/skills" />
         </nav>
 
@@ -38,6 +39,7 @@ export function Settings({ onClose }: { onClose: () => void }): React.JSX.Elemen
           {tab === 'gateway' && <GatewayTab />}
           {tab === 'permissions' && <PermissionsTab />}
           {tab === 'memory' && <MemoryTab />}
+          {tab === 'soul' && <SoulTab />}
           {tab === 'skills' && <SkillsTab />}
         </div>
       </div>
@@ -388,6 +390,75 @@ function MemoryTab(): React.JSX.Element {
         spellCheck={false}
         className="flex-1 resize-none bg-snow px-6 py-4 font-mono text-[13px] leading-[1.6] text-ink outline-none"
         placeholder="Write instructions here. Claude reads this at the start of every session."
+      />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Soul tab — edits ~/.claude/soul.md (Portico-only; how the agent responds)
+// ─────────────────────────────────────────────────────────────────────────
+
+function SoulTab(): React.JSX.Element {
+  const [content, setContent] = useState('')
+  const [original, setOriginal] = useState('')
+  const [path, setPath] = useState('')
+  const [exists, setExists] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    window.api.settings.soul.read().then((r) => {
+      setContent(r.content)
+      setOriginal(r.content)
+      setPath(r.path)
+      setExists(r.exists)
+    })
+  }, [])
+
+  const dirty = content !== original
+
+  async function save(): Promise<void> {
+    setSaving(true)
+    try {
+      await window.api.settings.soul.write(content)
+      setOriginal(content)
+      setExists(true)
+      setSavedAt(Date.now())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex items-center justify-between border-b border-parchment px-6 py-3">
+        <div>
+          <div className="text-[13px] text-ink">Agent soul · how Claude responds</div>
+          <div className="text-[11px] text-dusty">
+            {path}
+            {!exists && ' · not created yet'}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {savedAt && !dirty && (
+            <span className="text-[11px] text-stone">Saved {new Date(savedAt).toLocaleTimeString()}</span>
+          )}
+          <button
+            onClick={save}
+            disabled={!dirty || saving}
+            className="rounded-[9.6px] bg-ink px-4 py-1.5 text-[13px] font-medium text-snow hover:opacity-90 disabled:opacity-30"
+          >
+            {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        spellCheck={false}
+        className="flex-1 resize-none bg-snow px-6 py-4 font-mono text-[13px] leading-[1.6] text-ink outline-none"
+        placeholder="How should Claude respond? Tone, structure, push-back posture. The agent reads this every session and can edit it when you ask it to behave differently."
       />
     </div>
   )

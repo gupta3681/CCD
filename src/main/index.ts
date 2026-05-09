@@ -38,8 +38,25 @@ const PORTICO_APPEND =
   'fences, tables) when it helps readability. Be concise. Prefer answering ' +
   'immediately over asking clarifying questions when the request is unambiguous.'
 
+const PROFILE_FILES_CODA = `
+
+## Files you can update
+- ~/.claude/CLAUDE.md captures what you know about the user (already loaded into your context). When the user shares new info — new role, project, name correction, preference — use the Edit tool to update it.
+- ~/.claude/soul.md captures how the user wants you to respond (already loaded below if it exists). When the user asks you to behave differently from now on, use the Edit tool to update it.
+- Both files persist across sessions. Don't ask permission to edit them when the user has clearly stated a new fact or preference; the user expects you to keep your context current.`
+
 function modelFor(): string {
   return process.env.PORTICO_MODEL?.trim() || DEFAULT_MODEL
+}
+
+function buildAppend(): string {
+  let append = PORTICO_APPEND
+  const soul = userSettings.readSoul()
+  if (soul.exists && soul.content.trim().length > 0) {
+    append += `\n\n## How to respond (from ~/.claude/soul.md)\n\n${soul.content.trim()}`
+  }
+  append += PROFILE_FILES_CODA
+  return append
 }
 
 function systemPromptFor():
@@ -48,8 +65,9 @@ function systemPromptFor():
   | undefined {
   const override = process.env.PORTICO_SYSTEM_PROMPT?.trim()
   if (override) return override
-  if (process.env.PORTICO_PLAIN_SYSTEM_PROMPT === '1') return PORTICO_APPEND
-  return { type: 'preset', preset: 'claude_code', append: PORTICO_APPEND }
+  const append = buildAppend()
+  if (process.env.PORTICO_PLAIN_SYSTEM_PROMPT === '1') return append
+  return { type: 'preset', preset: 'claude_code', append }
 }
 
 // Auto-deny all pending permissions, e.g. on window close so the SDK promise
@@ -183,6 +201,17 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('settings:skills:create', (_e, name: string) => userSettings.createSkill(name))
   ipcMain.handle('settings:skills:delete', (_e, name: string) => userSettings.deleteSkill(name))
+
+  ipcMain.handle('settings:soul:read', () => userSettings.readSoul())
+  ipcMain.handle('settings:soul:write', (_e, content: string) => userSettings.writeSoul(content))
+
+  ipcMain.handle('settings:profile:isFirstRun', () => userSettings.isFirstRun())
+  ipcMain.handle(
+    'settings:profile:seed',
+    (_e, input: { persona: 'developer' | 'pm' | 'director'; name: string; workingOn: string }) =>
+      userSettings.seedProfile(input)
+  )
+  ipcMain.handle('settings:profile:skip', () => userSettings.skipProfileSetup())
 
   // ── Conversations ─────────────────────────────────────────────────────
   ipcMain.handle('conversations:list', () => conversations.list())
