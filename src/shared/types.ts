@@ -32,7 +32,18 @@ export interface Conversation {
   id: string
   title: string
   createdAt: number
+  /**
+   * Bumped on any record change (bubbles, sessionId, cwd, rename, trust). Use
+   * for "was this record touched recently?" — internal bookkeeping, not for
+   * sidebar order.
+   */
   updatedAt: number
+  /**
+   * Bumped only when bubbles change (i.e. a real message was exchanged).
+   * Drives sidebar sort order so renaming or changing the working folder
+   * doesn't shuffle old conversations to the top.
+   */
+  lastMessageAt?: number
   sessionId: string | null
   bubbles: Bubble[]
   cwd?: string | null

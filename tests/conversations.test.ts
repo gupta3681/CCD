@@ -198,6 +198,78 @@ describe('corruption handling', () => {
   })
 })
 
+describe('sort order — lastMessageAt, not metadata bumps', () => {
+  it('save() bumps lastMessageAt and moves the conversation up', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+
+  it('rename does NOT shuffle order', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.rename('a', 'Renamed')
+    // 'a' was renamed AFTER 'b' was saved, but the sidebar should still show
+    // 'b' on top because 'a' had no new message.
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+
+  it('setCwd does NOT shuffle order', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.setCwd('a', '/some/path')
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+
+  it('setSessionId does NOT shuffle order', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.setSessionId('a', 'sdk-new')
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+
+  it('setTrustProject does NOT shuffle order', async () => {
+    const { conv } = await load()
+    conv.save('a', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'a' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.save('b', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'b' }] }])
+    await new Promise((r) => setTimeout(r, 5))
+    conv.setTrustProject('a', true)
+    expect(conv.list().map((c) => c.id)).toEqual(['b', 'a'])
+  })
+
+  it('migrates pre-lastMessageAt records from updatedAt', async () => {
+    const { util } = await load()
+    writeFileSync(
+      file(util),
+      JSON.stringify({
+        legacy: {
+          id: 'legacy',
+          title: 'old',
+          createdAt: 1000,
+          updatedAt: 5000, // pre-version: this is the only timestamp
+          sessionId: null,
+          bubbles: []
+        }
+      })
+    )
+    const { conv } = await load()
+    const summary = conv.list().find((c) => c.id === 'legacy')!
+    expect(summary.updatedAt).toBe(5000) // seeded from the old updatedAt
+  })
+})
+
 describe('persistence', () => {
   it('writes JSON atomically (no .tmp leftover)', async () => {
     const { conv, util } = await load()

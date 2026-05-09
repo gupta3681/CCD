@@ -19,6 +19,15 @@ function migrate(b: Bubble): Bubble {
   return { ...b, blocks: [] }
 }
 
+function migrateConversation(c: Conversation): Conversation {
+  // Pre-lastMessageAt records: seed it from updatedAt so existing sort order
+  // doesn't get scrambled on first launch with this version.
+  if (c.lastMessageAt == null) {
+    c.lastMessageAt = c.updatedAt
+  }
+  return c
+}
+
 function load(): Store {
   if (cache) return cache
   const file = dataFile()
@@ -30,6 +39,7 @@ function load(): Store {
     const parsed = JSON.parse(readFileSync(file, 'utf-8')) as Store
     for (const id of Object.keys(parsed)) {
       parsed[id].bubbles = parsed[id].bubbles.map(migrate)
+      parsed[id] = migrateConversation(parsed[id])
     }
     cache = parsed
   } catch (err) {
@@ -55,7 +65,14 @@ function persist(): void {
 export function list(): ConversationSummary[] {
   const store = load()
   return Object.values(store)
-    .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      // The sidebar shows "5m ago" using this field. We expose lastMessageAt
+      // (when a message was last exchanged) so old conversations stay put when
+      // their metadata is edited.
+      updatedAt: c.lastMessageAt ?? c.createdAt
+    }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
@@ -137,14 +154,23 @@ export function save(id: string, bubbles: Bubble[]): ConversationSummary {
   const now = Date.now()
   const existing = store[id]
   const title = deriveTitle(bubbles)
-  // Preserve sessionId if the init event already wrote a stub record before
-  // the renderer's first save call.
+  // save() is the one path that means "a real message just happened" — only
+  // here do we bump lastMessageAt. Metadata mutations (setCwd, rename, etc.)
+  // bump updatedAt only and don't shuffle the sidebar.
   const conv: Conversation = existing
-    ? { ...existing, title, bubbles, updatedAt: now }
-    : { id, title, createdAt: now, updatedAt: now, sessionId: null, bubbles }
+    ? { ...existing, title, bubbles, updatedAt: now, lastMessageAt: now }
+    : {
+        id,
+        title,
+        createdAt: now,
+        updatedAt: now,
+        lastMessageAt: now,
+        sessionId: null,
+        bubbles
+      }
   store[id] = conv
   persist()
-  return { id: conv.id, title: conv.title, updatedAt: conv.updatedAt }
+  return { id: conv.id, title: conv.title, updatedAt: conv.lastMessageAt ?? conv.createdAt }
 }
 
 export function remove(id: string): void {
