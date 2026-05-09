@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
 import type { Bubble, ConversationSummary } from '../../preload'
 
@@ -235,11 +237,17 @@ function BubbleView({ bubble }: { bubble: Bubble }): React.JSX.Element {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] whitespace-pre-wrap rounded-[9.6px] px-4 py-3 text-[15px] leading-[1.5] ${
-          isUser ? 'bg-ink text-snow' : 'border border-parchment bg-snow text-ink'
+        className={`max-w-[85%] rounded-[9.6px] px-4 py-3 text-[15px] leading-[1.5] ${
+          isUser
+            ? 'whitespace-pre-wrap bg-ink text-snow'
+            : 'prose-portico border border-parchment bg-snow text-ink'
         }`}
       >
-        {bubble.text}
+        {isUser ? (
+          bubble.text
+        ) : (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{bubble.text}</ReactMarkdown>
+        )}
       </div>
     </div>
   )
