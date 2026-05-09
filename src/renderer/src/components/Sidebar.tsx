@@ -17,6 +17,9 @@ interface Props {
   onDelete: (id: string) => void
   onOpenSettings: () => void
   settingsActive: boolean
+  // Refs for the tour to anchor coachmarks against.
+  newSessionRef?: React.RefObject<HTMLButtonElement | null>
+  settingsBtnRef?: React.RefObject<HTMLButtonElement | null>
 }
 
 function relativeTime(ts: number): string {
@@ -41,7 +44,9 @@ export function Sidebar(props: Props): React.JSX.Element {
     onSelect,
     onDelete,
     onOpenSettings,
-    settingsActive
+    settingsActive,
+    newSessionRef,
+    settingsBtnRef
   } = props
 
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -101,6 +106,7 @@ export function Sidebar(props: Props): React.JSX.Element {
       </div>
 
       <button
+        ref={newSessionRef}
         onClick={onNewSession}
         className="mx-3 flex items-center gap-2 rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-2 text-left text-[13px] text-ink hover:border-onyx/30"
       >
@@ -154,6 +160,7 @@ export function Sidebar(props: Props): React.JSX.Element {
       </div>
 
       <button
+        ref={settingsBtnRef}
         onClick={onOpenSettings}
         className={`mx-3 mb-3 mt-2 flex items-center gap-2 rounded-[9.6px] border border-onyx/15 px-3 py-2 text-left text-[13px] text-ink ${
           settingsActive ? 'bg-parchment/60' : 'bg-snow hover:border-onyx/30'

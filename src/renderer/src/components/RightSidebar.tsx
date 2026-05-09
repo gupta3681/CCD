@@ -10,6 +10,8 @@ interface Props {
   onClearCwd: () => void
   onRevealCwd: () => void
   onToggleTrustProject: (next: boolean) => void
+  // Forwarded to the <aside> root so the tour can anchor a coachmark.
+  rootRef?: React.RefObject<HTMLElement | null>
 }
 
 function shortenPath(p: string, maxLen = 40): string {
@@ -28,12 +30,13 @@ export function RightSidebar(props: Props): React.JSX.Element {
     onChangeCwd,
     onClearCwd,
     onRevealCwd,
-    onToggleTrustProject
+    onToggleTrustProject,
+    rootRef
   } = props
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-10 flex-col items-center gap-2 border-l border-parchment bg-vellum py-3">
+      <aside ref={rootRef} className="flex h-full w-10 flex-col items-center gap-2 border-l border-parchment bg-vellum py-3">
         <button
           onClick={onToggleCollapsed}
           title="Show panel"
@@ -55,7 +58,7 @@ export function RightSidebar(props: Props): React.JSX.Element {
   }
 
   return (
-    <aside className="flex h-full w-72 flex-col border-l border-parchment bg-vellum">
+    <aside ref={rootRef} className="flex h-full w-72 flex-col border-l border-parchment bg-vellum">
       <div className="flex items-center justify-between px-3 py-3">
         <span className="text-[11px] font-medium uppercase tracking-wider text-stone">Session</span>
         <button

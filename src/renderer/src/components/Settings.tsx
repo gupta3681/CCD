@@ -5,10 +5,12 @@ type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills' | 'advanced'
 
 export function Settings({
   onClose,
-  onRerunPersonaWizard
+  onRerunPersonaWizard,
+  onRerunTour
 }: {
   onClose: () => void
   onRerunPersonaWizard: () => void
+  onRerunTour: () => void
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('gateway')
   const [paths, setPaths] = useState<SettingsPaths | null>(null)
@@ -48,7 +50,7 @@ export function Settings({
           {tab === 'memory' && <MemoryTab />}
           {tab === 'soul' && <SoulTab onRerunPersonaWizard={onRerunPersonaWizard} />}
           {tab === 'skills' && <SkillsTab />}
-          {tab === 'advanced' && <AdvancedTab />}
+          {tab === 'advanced' && <AdvancedTab onRerunTour={onRerunTour} />}
         </div>
       </div>
     </div>
@@ -687,7 +689,7 @@ interface LogEntry {
   meta?: Record<string, unknown>
 }
 
-function AdvancedTab(): React.JSX.Element {
+function AdvancedTab({ onRerunTour }: { onRerunTour: () => void }): React.JSX.Element {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [paths, setPaths] = useState<{ dir: string; currentFile: string } | null>(null)
   const [autoscroll, setAutoscroll] = useState(true)
@@ -735,6 +737,13 @@ function AdvancedTab(): React.JSX.Element {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onRerunTour}
+            className="rounded-[6px] border border-onyx/15 bg-snow px-2 py-1 text-[11px] text-ink hover:border-onyx/30"
+            title="Replay the first-run guided tour"
+          >
+            Re-run tour
+          </button>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as LogLevel | 'all')}

@@ -5,6 +5,7 @@ import { RightSidebar, useCollapsedRightSidebar } from './components/RightSideba
 import { BubbleView } from './components/BubbleView'
 import { Settings } from './components/Settings'
 import { PersonaWizard } from './components/PersonaWizard'
+import { Tour, tourCompleted, clearTourCompleted } from './components/Tour'
 import type { Block, Bubble, ConversationSummary } from '../../preload'
 
 // SDK partial-message stream events (see Anthropic SDK BetaRawMessageStreamEvent).
@@ -119,6 +120,12 @@ function App(): React.JSX.Element {
   const [trustProject, setTrustProject] = useState<boolean>(false)
   const [contextTokens, setContextTokens] = useState<number | null>(null)
   const [firstRun, setFirstRun] = useState<boolean>(false)
+  const [tourActive, setTourActive] = useState<boolean>(false)
+  const headerGatewayRef = useRef<HTMLDivElement>(null)
+  const inputBarRef = useRef<HTMLTextAreaElement>(null)
+  const sidebarNewSessionRef = useRef<HTMLButtonElement>(null)
+  const sidebarSettingsRef = useRef<HTMLButtonElement>(null)
+  const rightSidebarRef = useRef<HTMLElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Tracks the SDK message.id of the assistant turn currently being streamed,
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
@@ -201,6 +208,17 @@ function App(): React.JSX.Element {
     window.api.gatewayInfo().then(setGateway)
     window.api.settings.profile.isFirstRun().then(setFirstRun)
     refreshList()
+    // Tour fires once: only after the persona wizard is done, and only if the
+    // user hasn't already seen it. Re-runnable from Settings → Advanced.
+    if (!tourCompleted()) {
+      // Slight delay so refs have mounted and the persona wizard (if needed)
+      // takes precedence — tour shows after first chat-empty-state render.
+      const t = setTimeout(() => {
+        if (!tourCompleted()) setTourActive(true)
+      }, 600)
+      return () => clearTimeout(t)
+    }
+    return undefined
 
     const offMsg = window.api.onMessage((runId, raw) => {
       const msg = raw as SDKMessage
@@ -445,6 +463,8 @@ function App(): React.JSX.Element {
         onDelete={deleteSession}
         onOpenSettings={() => setView('settings')}
         settingsActive={view === 'settings'}
+        newSessionRef={sidebarNewSessionRef}
+        settingsBtnRef={sidebarSettingsRef}
       />
 
       {view === 'settings' && (
@@ -452,6 +472,11 @@ function App(): React.JSX.Element {
           onClose={() => setView('chat')}
           onRerunPersonaWizard={() => {
             setFirstRun(true)
+            setView('chat')
+          }}
+          onRerunTour={() => {
+            clearTourCompleted()
+            setTourActive(true)
             setView('chat')
           }}
         />
@@ -465,7 +490,7 @@ function App(): React.JSX.Element {
           </div>
           <div className="flex items-center gap-3 text-[11px] text-dusty [-webkit-app-region:no-drag]">
             {gateway ? (
-              <div className="flex items-center gap-2">
+              <div ref={headerGatewayRef} className="flex items-center gap-2">
                 <span
                   className={`inline-block h-1.5 w-1.5 rounded-full ${
                     gateway.configured ? 'bg-[#4a8a5e]' : 'bg-terra'
@@ -533,6 +558,7 @@ function App(): React.JSX.Element {
           <div className="mx-auto flex max-w-[760px] flex-col gap-2">
             <div className="flex items-end gap-3">
               <textarea
+                ref={inputBarRef}
                 className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
                 placeholder="Ask anything…  (Enter to send, Shift+Enter for newline)"
                 value={input}
@@ -575,6 +601,20 @@ function App(): React.JSX.Element {
           onClearCwd={clearCwd}
           onRevealCwd={revealCwd}
           onToggleTrustProject={toggleTrustProject}
+          rootRef={rightSidebarRef}
+        />
+      )}
+
+      {tourActive && view === 'chat' && !firstRun && (
+        <Tour
+          anchors={{
+            gateway: headerGatewayRef.current,
+            newSession: sidebarNewSessionRef.current,
+            rightSidebar: rightSidebarRef.current,
+            settings: sidebarSettingsRef.current,
+            input: inputBarRef.current
+          }}
+          onClose={() => setTourActive(false)}
         />
       )}
     </div>
