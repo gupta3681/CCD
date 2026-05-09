@@ -447,7 +447,15 @@ function App(): React.JSX.Element {
         settingsActive={view === 'settings'}
       />
 
-      {view === 'settings' && <Settings onClose={() => setView('chat')} />}
+      {view === 'settings' && (
+        <Settings
+          onClose={() => setView('chat')}
+          onRerunPersonaWizard={() => {
+            setFirstRun(true)
+            setView('chat')
+          }}
+        />
+      )}
 
       {view === 'chat' && (
       <div className="flex flex-1 min-w-0 flex-col">

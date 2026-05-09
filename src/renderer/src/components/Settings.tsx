@@ -3,7 +3,13 @@ import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../p
 
 type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills'
 
-export function Settings({ onClose }: { onClose: () => void }): React.JSX.Element {
+export function Settings({
+  onClose,
+  onRerunPersonaWizard
+}: {
+  onClose: () => void
+  onRerunPersonaWizard: () => void
+}): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('gateway')
   const [paths, setPaths] = useState<SettingsPaths | null>(null)
 
@@ -39,7 +45,7 @@ export function Settings({ onClose }: { onClose: () => void }): React.JSX.Elemen
           {tab === 'gateway' && <GatewayTab />}
           {tab === 'permissions' && <PermissionsTab />}
           {tab === 'memory' && <MemoryTab />}
-          {tab === 'soul' && <SoulTab />}
+          {tab === 'soul' && <SoulTab onRerunPersonaWizard={onRerunPersonaWizard} />}
           {tab === 'skills' && <SkillsTab />}
         </div>
       </div>
@@ -399,7 +405,11 @@ function MemoryTab(): React.JSX.Element {
 // Soul tab — edits ~/.claude/soul.md (Portico-only; how the agent responds)
 // ─────────────────────────────────────────────────────────────────────────
 
-function SoulTab(): React.JSX.Element {
+function SoulTab({
+  onRerunPersonaWizard
+}: {
+  onRerunPersonaWizard: () => void
+}): React.JSX.Element {
   const [content, setContent] = useState('')
   const [original, setOriginal] = useState('')
   const [path, setPath] = useState('')
@@ -444,6 +454,13 @@ function SoulTab(): React.JSX.Element {
           {savedAt && !dirty && (
             <span className="text-[11px] text-stone">Saved {new Date(savedAt).toLocaleTimeString()}</span>
           )}
+          <button
+            onClick={onRerunPersonaWizard}
+            className="rounded-[9.6px] border border-onyx/15 px-3 py-1.5 text-[12px] text-ink hover:bg-snow"
+            title="Re-pick a persona — overwrites soul.md and appends a new About me block to CLAUDE.md"
+          >
+            Re-run persona setup
+          </button>
           <button
             onClick={save}
             disabled={!dirty || saving}
