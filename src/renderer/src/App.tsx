@@ -84,15 +84,19 @@ function App(): React.JSX.Element {
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
   const [view, setView] = useState<'chat' | 'settings'>('chat')
   const scrollerRef = useRef<HTMLDivElement>(null)
+  // Tracks the SDK message.id of the assistant turn currently being streamed,
+  // per runId. Each agent turn = its own bubble; without this, tool-use loops
+  // pile multiple turns into one visual bubble.
+  const currentMessageIdRef = useRef<Map<string, string>>(new Map())
 
   const refreshList = useCallback(async () => {
     const list = await window.api.conversations.list()
     setConversations(list)
   }, [])
 
-  // Apply a stream_event into the current bubble list. The bubbleId is
-  // deterministic from runId, so each updater finds or creates its own
-  // bubble — no inter-updater state races.
+  // Apply a stream_event into the current bubble list. Each assistant turn
+  // (message_start) gets its own bubble keyed by SDK message.id, so tool-use
+  // loops produce visually separate turns.
   const applyStreamEvent = useCallback((runId: string, ev: StreamEvent) => {
     if (
       ev.type !== 'content_block_start' &&
@@ -102,8 +106,14 @@ function App(): React.JSX.Element {
       return
     }
 
+    if (ev.type === 'message_start') {
+      currentMessageIdRef.current.set(runId, ev.message.id)
+    }
+    const messageId = currentMessageIdRef.current.get(runId)
+    if (!messageId) return // delta arrived before message_start; can't place it
+    const bubbleId = `${runId}-${messageId}`
+
     setBubbles((prev) => {
-      const bubbleId = `${runId}-a`
       let nextBubbles = prev
       let idx = nextBubbles.findIndex((b) => b.id === bubbleId)
       if (idx === -1) {
@@ -111,7 +121,6 @@ function App(): React.JSX.Element {
         idx = nextBubbles.length - 1
       }
 
-      // message_start just guarantees the bubble exists; nothing else to do.
       if (ev.type === 'message_start') return nextBubbles
 
       const bubble = nextBubbles[idx]
@@ -193,11 +202,13 @@ function App(): React.JSX.Element {
       setBubbles((prev) => upsertBubble(prev, bubble))
     })
 
-    const offDone = window.api.onDone(() => {
+    const offDone = window.api.onDone((runId) => {
+      currentMessageIdRef.current.delete(runId)
       setBusy(false)
       setActiveRunId(null)
     })
     const offErr = window.api.onError((runId, err) => {
+      currentMessageIdRef.current.delete(runId)
       setBubbles((prev) => [
         ...prev,
         {
