@@ -94,6 +94,28 @@ export function setCwd(id: string, cwd: string | null): void {
   persist()
 }
 
+export function getTrustProject(id: string): boolean {
+  return load()[id]?.trustProject === true
+}
+
+export function setTrustProject(id: string, trust: boolean): void {
+  const store = load()
+  const now = Date.now()
+  const existing = store[id]
+  store[id] = existing
+    ? { ...existing, trustProject: trust, updatedAt: now }
+    : {
+        id,
+        title: 'New chat',
+        createdAt: now,
+        updatedAt: now,
+        sessionId: null,
+        bubbles: [],
+        trustProject: trust
+      }
+  persist()
+}
+
 function bubbleText(b: Bubble): string {
   if (b.text) return b.text
   if (!b.blocks) return ''

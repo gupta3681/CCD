@@ -103,6 +103,7 @@ function App(): React.JSX.Element {
   const [rightCollapsed, toggleRightCollapsed] = useCollapsedRightSidebar()
   const [view, setView] = useState<'chat' | 'settings'>('chat')
   const [cwd, setCwd] = useState<string | null>(null)
+  const [trustProject, setTrustProject] = useState<boolean>(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
   // Tracks the SDK message.id of the assistant turn currently being streamed,
   // per runId. Each agent turn = its own bubble; without this, tool-use loops
@@ -314,6 +315,7 @@ function App(): React.JSX.Element {
     setConversationId(crypto.randomUUID())
     setBubbles([])
     setCwd(null)
+    setTrustProject(false)
   }
 
   async function selectSession(id: string): Promise<void> {
@@ -323,6 +325,7 @@ function App(): React.JSX.Element {
     setConversationId(id)
     setBubbles(conv.bubbles)
     setCwd(conv.cwd ?? null)
+    setTrustProject(!!conv.trustProject)
   }
 
   async function deleteSession(id: string): Promise<void> {
@@ -331,6 +334,7 @@ function App(): React.JSX.Element {
       setConversationId(crypto.randomUUID())
       setBubbles([])
       setCwd(null)
+      setTrustProject(false)
     }
     refreshList()
   }
@@ -339,12 +343,14 @@ function App(): React.JSX.Element {
     const picked = await window.api.dialog.pickFolder(cwd ?? undefined)
     if (!picked) return
     setCwd(picked)
+    setTrustProject(false) // changing folder always resets trust
     await window.api.conversations.setCwd(conversationId, picked)
     refreshList()
   }
 
   async function clearCwd(): Promise<void> {
     setCwd(null)
+    setTrustProject(false)
     await window.api.conversations.setCwd(conversationId, null)
     refreshList()
   }
@@ -352,6 +358,11 @@ function App(): React.JSX.Element {
   async function revealCwd(): Promise<void> {
     if (!cwd) return
     await window.api.shell.revealPath(cwd)
+  }
+
+  async function toggleTrustProject(next: boolean): Promise<void> {
+    setTrustProject(next)
+    await window.api.conversations.setTrustProject(conversationId, next)
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -485,9 +496,11 @@ function App(): React.JSX.Element {
           collapsed={rightCollapsed}
           onToggleCollapsed={toggleRightCollapsed}
           cwd={cwd}
+          trustProject={trustProject}
           onChangeCwd={pickCwd}
           onClearCwd={clearCwd}
           onRevealCwd={revealCwd}
+          onToggleTrustProject={toggleTrustProject}
         />
       )}
     </div>

@@ -36,6 +36,13 @@ export interface Conversation {
   sessionId: string | null
   bubbles: Bubble[]
   cwd?: string | null
+  /**
+   * When true, the agent loads CLAUDE.md and skills from the working folder's
+   * .claude/ directory in addition to the user's global ~/.claude/. Off by
+   * default — opting in trusts that folder's instructions, which can be a
+   * prompt-injection vector if the folder is from an untrusted source.
+   */
+  trustProject?: boolean
 }
 
 export interface SkillSummary {

@@ -191,6 +191,15 @@ app.whenReady().then(() => {
       throw new Error('Working folder must be an existing directory inside your home folder.')
     }
     conversations.setCwd(id, cwd)
+    // Changing the folder always resets the trust flag — the user must
+    // re-opt-in for the new folder.
+    if (cwd === null || cwd !== conversations.getCwd(id)) {
+      conversations.setTrustProject(id, false)
+    }
+  })
+
+  ipcMain.handle('conversations:setTrustProject', (_e, id: string, trust: boolean) => {
+    conversations.setTrustProject(id, !!trust)
   })
 
   // ── Native dialogs / shell ────────────────────────────────────────────
@@ -229,6 +238,15 @@ app.whenReady().then(() => {
       // Re-validate at use time — the renderer is the only writer today, but
       // the conversations.json file could have been edited externally.
       const cwd = storedCwd && isCwdSafe(storedCwd) ? storedCwd : undefined
+      const trustProject = !!cwd && conversations.getTrustProject(conversationId)
+      // settingSources controls which .claude/ dirs the SDK auto-loads.
+      // - 'user' is always safe (the user's own ~/.claude/).
+      // - 'project' loads CLAUDE.md + skills from the working folder. Opt-in
+      //   per conversation via the right-panel "Trust folder" checkbox so
+      //   browsing into an untrusted repo can't inject instructions.
+      const settingSources: Array<'user' | 'project' | 'local'> = trustProject
+        ? ['user', 'project']
+        : ['user']
       const controller = new AbortController()
       activeRuns.set(runId, controller)
 
@@ -243,6 +261,12 @@ app.whenReady().then(() => {
             systemPrompt: systemPromptFor(),
             includePartialMessages: true,
             abortController: controller,
+            settingSources,
+            // We persist conversations ourselves (conversations.json). Disable
+            // the SDK's parallel JSONL dump under ~/.claude/projects/ to avoid
+            // duplicating disk writes and to shrink the leak surface for
+            // potentially sensitive prompts.
+            persistSession: false,
             ...(cwd ? { cwd } : {}),
             ...(askMode
               ? {

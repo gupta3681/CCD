@@ -99,7 +99,9 @@ const api = {
     rename: (id: string, title: string): Promise<void> =>
       ipcRenderer.invoke('conversations:rename', id, title),
     setCwd: (id: string, cwd: string | null): Promise<void> =>
-      ipcRenderer.invoke('conversations:setCwd', id, cwd)
+      ipcRenderer.invoke('conversations:setCwd', id, cwd),
+    setTrustProject: (id: string, trust: boolean): Promise<void> =>
+      ipcRenderer.invoke('conversations:setTrustProject', id, trust)
   },
 
   dialog: {

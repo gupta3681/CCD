@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portico — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --vellum: #faf9f5;
+    --ink: #141413;
+    --onyx: #1f1e1d;
+    --graphite: #3d3d3a;
+    --dusty: #73726c;
+    --stone: #9c9a92;
+    --parchment: #dedcd1;
+    --snow: #ffffff;
+    --azure: #ccdbe8;
+    --terra: #d97757;
+    --green: #4a8a5e;
+    --amber: #b89456;
+
+    --serif: 'Lora', ui-serif, Georgia, serif;
+    --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--vellum);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─────────────────── Layout ─────────────────── */
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  header.site {
+    border-bottom: 1px solid var(--parchment);
+    padding: 18px 0;
+    background: var(--vellum);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(6px);
+    background-color: rgba(250, 249, 245, 0.85);
+  }
+  header.site .row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+  .logo { font-family: var(--serif); font-size: 20px; font-weight: 400; }
+  .crumbs { font-size: 12px; color: var(--dusty); }
+  nav.toc { display: flex; gap: 18px; font-size: 12px; }
+  nav.toc a { color: var(--graphite); text-decoration: none; }
+  nav.toc a:hover { color: var(--ink); }
+
+  main { padding: 72px 0 120px; }
+
+  section { margin: 96px 0; scroll-margin-top: 80px; }
+  section.hero { margin-top: 32px; }
+
+  h1.display {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 56px;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  h2.section-title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 34px;
+    line-height: 1.15;
+    margin-bottom: 12px;
+  }
+  h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 19px;
+    line-height: 1.3;
+    margin: 28px 0 8px;
+  }
+  .lede {
+    font-size: 17px;
+    color: var(--graphite);
+    max-width: 680px;
+    margin-bottom: 28px;
+  }
+  p { margin-bottom: 14px; max-width: 680px; }
+  p.note { color: var(--dusty); font-size: 13.5px; }
+  ul { padding-left: 22px; margin-bottom: 14px; max-width: 680px; }
+  li { margin-bottom: 6px; }
+  a.inline { color: var(--ink); border-bottom: 1px solid var(--parchment); text-decoration: none; }
+  a.inline:hover { border-bottom-color: var(--ink); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 14px 0 22px;
+  }
+  pre .c { color: var(--dusty); }
+  pre .k { color: var(--terra); }
+  pre .s { color: var(--green); }
+  pre .n { color: var(--graphite); }
+
+  /* ─────────────────── Three-process diagram ─────────────────── */
+  .three {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px;
+    margin: 38px 0 16px;
+  }
+  .proc {
+    border: 1px solid var(--parchment);
+    border-radius: 14px;
+    background: var(--snow);
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+  }
+  .proc.active {
+    border-color: var(--ink);
+    box-shadow: 0 1px 24px rgba(20,20,19,0.06);
+  }
+  .proc-tag {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--stone);
+  }
+  .proc h4 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 22px;
+    margin: 4px 0 8px;
+  }
+  .proc p {
+    font-size: 13px;
+    color: var(--graphite);
+    line-height: 1.5;
+  }
+  .proc .perms {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pill {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--parchment);
+    color: var(--graphite);
+    background: var(--vellum);
+  }
+  .pill.allow { color: var(--green); border-color: rgba(74,138,94,0.3); background: rgba(74,138,94,0.06); }
+  .pill.deny { color: var(--terra); border-color: rgba(217,119,87,0.3); background: rgba(217,119,87,0.06); }
+
+  /* Lit-up glow for the "currently active" process */
+  .proc::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    background: radial-gradient(circle at 50% 0%, rgba(217,119,87,0.10), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .proc.active::after { opacity: 1; }
+
+  /* Connecting tracks between the processes */
+  .tracks {
+    position: relative;
+    height: 8px;
+    margin: -2px 0 18px;
+  }
+  .track {
+    position: absolute;
+    top: 3px;
+    height: 2px;
+    background: var(--parchment);
+    border-radius: 2px;
+  }
+  .track.left  { left: 16.66%; right: 50%; }
+  .track.right { left: 50%; right: 16.66%; }
+
+  .ball {
+    position: absolute;
+    top: -1px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--terra);
+    transform: translateX(-50%);
+    box-shadow: 0 0 0 4px rgba(217,119,87,0.18);
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  button.play {
+    border: 1px solid var(--onyx);
+    background: var(--ink);
+    color: var(--snow);
+    border-radius: 9.6px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  button.play.outline {
+    background: var(--snow);
+    color: var(--ink);
+  }
+  .step-label {
+    font-size: 12px;
+    color: var(--dusty);
+    min-width: 240px;
+  }
+  .step-label strong { color: var(--ink); font-weight: 500; }
+
+  /* ─────────────────── Boot timeline ─────────────────── */
+  .timeline {
+    margin: 28px 0;
+    border-left: 1px solid var(--parchment);
+    padding-left: 24px;
+    position: relative;
+  }
+  .step {
+    position: relative;
+    margin-bottom: 28px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .step.show { opacity: 1; transform: translateY(0); }
+  .step::before {
+    content: '';
+    position: absolute;
+    left: -29px;
+    top: 6px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--vellum);
+    border: 2px solid var(--ink);
+  }
+  .step .num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--stone);
+    margin-bottom: 2px;
+  }
+  .step .what {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 400;
+  }
+  .step .where {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--dusty);
+    margin-top: 2px;
+  }
+  .step .body {
+    color: var(--graphite);
+    font-size: 14px;
+    margin-top: 6px;
+    max-width: 680px;
+  }
+
+  /* ─────────────────── Big flow diagram ─────────────────── */
+  .flow {
+    border: 1px solid var(--parchment);
+    border-radius: 14px;
+    background: var(--snow);
+    padding: 26px 22px;
+    margin: 24px 0;
+  }
+  .flow-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .lane {
+    text-align: center;
+  }
+  .lane h5 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--stone);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .lane .lane-sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--dusty);
+  }
+  .flow svg { width: 100%; display: block; }
+  .flow-step-label {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--graphite);
+    min-height: 38px;
+  }
+  .flow-step-label strong { color: var(--ink); }
+
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--dusty);
+    margin-top: 12px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  /* ─────────────────── Two-column code/explainer ─────────────────── */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    margin: 22px 0;
+  }
+  .split .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--stone);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .card {
+    border: 1px solid var(--parchment);
+    border-radius: 10px;
+    background: var(--snow);
+    padding: 16px 18px;
+  }
+
+  .kvs { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 12px; }
+  .kvs th, .kvs td { text-align: left; padding: 9px 0; border-bottom: 1px solid var(--parchment); vertical-align: top; }
+  .kvs th { font-weight: 500; width: 32%; font-family: var(--mono); font-size: 12.5px; }
+  .kvs td { color: var(--graphite); }
+  .kvs tr:last-child th, .kvs tr:last-child td { border-bottom: none; }
+
+  .verdict-row { display: flex; gap: 8px; align-items: center; }
+  .v-chip {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .v-safe { background: rgba(74,138,94,0.10); color: #2f6240; }
+  .v-cau { background: rgba(184,148,86,0.15); color: #7a5d2e; }
+  .v-dan { background: rgba(217,119,87,0.15); color: var(--terra); }
+
+  /* fades */
+  .reveal { opacity: 0; transform: translateY(12px); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .reveal.show { opacity: 1; transform: translateY(0); }
+
+  hr.divider { border: none; border-top: 1px solid var(--parchment); margin: 96px 0; }
+
+  footer { margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--parchment); color: var(--dusty); font-size: 12px; }
+
+  @media (max-width: 760px) {
+    .three { grid-template-columns: 1fr; }
+    .tracks { display: none; }
+    .flow-grid { grid-template-columns: 1fr 1fr; }
+    h1.display { font-size: 38px; }
+    .split { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="container row">
+    <span class="logo">Portico</span>
+    <span class="crumbs">Architecture · v0.1</span>
+    <nav class="toc">
+      <a href="#processes">Processes</a>
+      <a href="#boot">Boot</a>
+      <a href="#ipc">IPC</a>
+      <a href="#flow">Flow</a>
+      <a href="#sdk">SDK config</a>
+      <a href="#fs">Filesystem</a>
+      <a href="#permissions">Permissions</a>
+      <a href="#security">Security</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="hero">
+    <h1 class="display">How Portico works.</h1>
+    <p class="lede">
+      A line-by-line tour of an Electron + Claude Agent SDK desktop app.
+      Read with the repo open — every section links to the file that does the work.
+    </p>
+  </section>
+
+  <!-- ─────────────────── Three processes ─────────────────── -->
+  <section id="processes" class="reveal">
+    <h2 class="section-title">Three processes, one app</h2>
+    <p>
+      Electron is two tools in one binary: <strong>Node.js</strong> (full OS access — read files, spawn shells)
+      and <strong>Chromium</strong> (a sandboxed browser engine that renders your UI). When Portico launches it
+      spawns several OS processes that play different roles. Knowing which code runs where is the single most
+      important Electron concept.
+    </p>
+
+    <div class="three">
+      <div class="proc" data-proc="renderer">
+        <div class="proc-tag">Process #3 — Chromium</div>
+        <h4>Renderer</h4>
+        <p>The React app you see. Runs in a sandbox like a webpage. Cannot touch the filesystem, the network outside HTTP, or the API key.</p>
+        <div class="perms">
+          <span class="pill">React</span>
+          <span class="pill">Tailwind</span>
+          <span class="pill deny">No fs</span>
+          <span class="pill deny">No env</span>
+        </div>
+      </div>
+      <div class="proc" data-proc="preload">
+        <div class="proc-tag">Process #2 — bridge</div>
+        <h4>Preload</h4>
+        <p>The trust boundary. Defines exactly which functions the renderer can call. Anything not exposed here is invisible to the UI.</p>
+        <div class="perms">
+          <span class="pill">contextBridge</span>
+          <span class="pill">ipcRenderer</span>
+        </div>
+      </div>
+      <div class="proc" data-proc="main">
+        <div class="proc-tag">Process #1 — Node</div>
+        <h4>Main</h4>
+        <p>The privileged process. Owns the API key, talks to the Claude SDK, reads/writes files, spawns the agent's tools.</p>
+        <div class="perms">
+          <span class="pill allow">fs</span>
+          <span class="pill allow">SDK</span>
+          <span class="pill allow">env</span>
+          <span class="pill allow">shell</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tracks">
+      <div class="track left"></div>
+      <div class="track right"></div>
+      <div class="ball" id="ball" style="left: 16.66%;"></div>
+    </div>
+
+    <div class="controls">
+      <button class="play" id="play-procs">▶ Play message flow</button>
+      <span class="step-label" id="step-procs">Click play — watch a request travel from the React UI through preload to main, then back.</span>
+    </div>
+
+    <h3>Why split it like this?</h3>
+    <p>
+      Security. The renderer renders <em>untrusted-looking content</em> — your prompt, the model's
+      markdown response, third-party React libraries. If any of that has a script-injection bug, you do
+      <strong>not</strong> want it to also have permission to <code>fs.readFileSync('/etc/passwd')</code> or
+      exfiltrate <code>process.env.ANTHROPIC_API_KEY</code>. Chromium's sandbox makes that impossible by default.
+      Anything the renderer needs from the OS goes through the IPC bridge below — and we control exactly what's exposed.
+    </p>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── Boot ─────────────────── -->
+  <section id="boot" class="reveal">
+    <h2 class="section-title">What happens when you launch the app</h2>
+    <p class="lede">Trace the boot, top to bottom.</p>
+
+    <div class="timeline">
+      <div class="step">
+        <div class="num">01</div>
+        <div class="what">Electron reads <code>package.json</code> and starts the main entry.</div>
+        <div class="where">"main": "./out/main/index.js"</div>
+        <div class="body">
+          In dev mode (<code>npm run dev</code>) electron-vite rebuilds and re-launches on every file change.
+          In production this points at the bundled main process.
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">02</div>
+        <div class="what">Main process loads <code>.env</code>, then user settings.</div>
+        <div class="where">src/main/index.ts:12 + appSettings.applyToEnv()</div>
+        <div class="body">
+          <code>dotenv</code> first puts <code>.env</code> values into <code>process.env</code>. Then on
+          <code>app.whenReady</code> we call <code>appSettings.applyToEnv()</code> which overwrites with the
+          user's saved gateway URL + API key (from the encrypted settings.json). <strong>App settings always
+          win over .env</strong> — that's the contract.
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">03</div>
+        <div class="what">Main registers ~25 IPC endpoints.</div>
+        <div class="where">ipcMain.handle('agent:query', ...)</div>
+        <div class="body">
+          These are the <em>only</em> functions the renderer can call. Each is a typed promise. Examples:
+          <code>agent:query</code>, <code>conversations:list</code>, <code>dialog:pickFolder</code>,
+          <code>permission:respond</code>.
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">04</div>
+        <div class="what">Main creates a <code>BrowserWindow</code>.</div>
+        <div class="where">webPreferences: { contextIsolation: true, nodeIntegration: false, ... }</div>
+        <div class="body">
+          A window is essentially a Chromium tab. The crucial config is the <code>preload</code> path — that
+          script runs <em>before</em> the page loads, in a privileged context that has both Node and the
+          upcoming <code>window</code> object.
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">05</div>
+        <div class="what">The preload script runs and builds the bridge.</div>
+        <div class="where">contextBridge.exposeInMainWorld('api', api)</div>
+        <div class="body">
+          After this line, the renderer can do <code>window.api.query(...)</code>. It cannot import
+          <code>electron</code>, cannot touch <code>fs</code>, cannot see <code>ipcRenderer</code> directly.
+          Only what we put on the <code>api</code> object is reachable.
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">06</div>
+        <div class="what">The HTML loads and React mounts.</div>
+        <div class="where">src/renderer/src/main.tsx → &lt;App /&gt;</div>
+        <div class="body">
+          From here on, everything is a React app. It looks like a webpage, behaves like a webpage. The only
+          unusual thing is the global <code>window.api</code> object — that's the door to everything else.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── IPC ─────────────────── -->
+  <section id="ipc" class="reveal">
+    <h2 class="section-title">The IPC dance</h2>
+    <p>
+      How a renderer-side function call ends up running Node code in main, and how the response gets back.
+      Every Portico feature uses this same three-step pattern.
+    </p>
+
+    <div class="split">
+      <div>
+        <div class="label">1 · Renderer calls api</div>
+        <pre><span class="c">// src/renderer/src/App.tsx</span>
+<span class="k">await</span> window.api.<span class="n">query</span>(prompt, runId, conversationId)</pre>
+        <p>The renderer doesn't know — and can't know — what's behind that function. It's a Promise that returns whenever the response comes back.</p>
+      </div>
+      <div>
+        <div class="label">2 · Preload forwards via ipcRenderer.invoke</div>
+        <pre><span class="c">// src/preload/index.ts</span>
+query: (prompt, runId, conversationId) =&gt;
+  ipcRenderer.<span class="n">invoke</span>(<span class="s">'agent:query'</span>, prompt, runId, conversationId)</pre>
+        <p><code>invoke</code> sends a message over Electron's IPC channel and returns a Promise that resolves with main's return value.</p>
+      </div>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="label">3 · Main handles the call</div>
+        <pre><span class="c">// src/main/index.ts</span>
+ipcMain.<span class="n">handle</span>(<span class="s">'agent:query'</span>, <span class="k">async</span> (event, prompt, runId, conversationId) =&gt; {
+  <span class="c">// validate inputs, call Claude SDK, stream events back…</span>
+})</pre>
+        <p>Main does whatever it needs — read files, call the SDK, spawn a process. The Promise it returns becomes the renderer's resolved value.</p>
+      </div>
+      <div>
+        <div class="label">Streaming the other way</div>
+        <pre><span class="c">// main pushes stream events back</span>
+sender.<span class="n">send</span>(<span class="s">'agent:message'</span>, payload)
+
+<span class="c">// renderer subscribes via the bridge</span>
+window.api.<span class="n">onMessage</span>((runId, msg) =&gt; { ... })</pre>
+        <p>For things like streaming tokens, main pushes events via <code>send</code>; the renderer registered listeners during init. Same channel, opposite direction.</p>
+      </div>
+    </div>
+
+    <p class="note">
+      The string channel names (<code>'agent:query'</code>) are the contract. If main and preload disagree
+      on a name, the call silently fails. That's why the convention is <code>namespace:verb</code> and why
+      the preload re-exports types from <code>src/shared/types.ts</code> — so the renderer's call signature
+      and main's handler can never drift.
+    </p>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── End-to-end flow ─────────────────── -->
+  <section id="flow" class="reveal">
+    <h2 class="section-title">End-to-end: a single prompt</h2>
+    <p class="lede">You type "ping google.com". What actually happens, in order.</p>
+
+    <div class="flow">
+      <div class="flow-grid">
+        <div class="lane"><h5>Renderer</h5><div class="lane-sub">React</div></div>
+        <div class="lane"><h5>Preload</h5><div class="lane-sub">window.api</div></div>
+        <div class="lane"><h5>Main</h5><div class="lane-sub">Node + SDK</div></div>
+        <div class="lane"><h5>Outside</h5><div class="lane-sub">Gateway / OS</div></div>
+      </div>
+
+      <svg viewBox="0 0 800 320" id="flow-svg" preserveAspectRatio="none" style="height: 320px;">
+        <!-- vertical lane lines -->
+        <line x1="100" y1="0" x2="100" y2="320" stroke="#dedcd1" stroke-width="1" />
+        <line x1="300" y1="0" x2="300" y2="320" stroke="#dedcd1" stroke-width="1" />
+        <line x1="500" y1="0" x2="500" y2="320" stroke="#dedcd1" stroke-width="1" />
+        <line x1="700" y1="0" x2="700" y2="320" stroke="#dedcd1" stroke-width="1" />
+
+        <!-- arrows: pre-drawn paths, animated via dash offset -->
+        <path id="arrow-1" d="M 100 40 L 300 40" stroke="#141413" stroke-width="1.5" fill="none" />
+        <path id="arrow-2" d="M 300 70 L 500 70" stroke="#141413" stroke-width="1.5" fill="none" />
+        <path id="arrow-3" d="M 500 100 L 700 100" stroke="#141413" stroke-width="1.5" fill="none" />
+        <path id="arrow-4" d="M 700 130 L 500 130" stroke="#d97757" stroke-width="1.5" fill="none" />
+        <path id="arrow-5" d="M 500 160 L 300 160" stroke="#d97757" stroke-width="1.5" fill="none" />
+        <path id="arrow-6" d="M 300 190 L 100 190" stroke="#d97757" stroke-width="1.5" fill="none" />
+
+        <!-- looping flow ball -->
+        <circle id="flow-ball" r="6" cx="100" cy="40" fill="#d97757" opacity="0" />
+
+        <!-- numbered dots at endpoints -->
+        <g font-family="JetBrains Mono, monospace" font-size="10" fill="#9c9a92">
+          <text x="20" y="44">user</text>
+          <text x="20" y="74">api.query</text>
+          <text x="20" y="104">SDK call</text>
+          <text x="20" y="134">stream</text>
+          <text x="20" y="164">on:message</text>
+          <text x="20" y="194">setBubbles</text>
+          <text x="20" y="220" fill="#73726c">…repeat for each token…</text>
+          <text x="20" y="246" fill="#73726c">tool_use → permission prompt</text>
+          <text x="20" y="270" fill="#73726c">tool_result → next assistant turn</text>
+          <text x="20" y="294" fill="#73726c">done → save conversation</text>
+        </g>
+      </svg>
+
+      <div class="flow-step-label" id="flow-step">Click play. The dot represents the data; the orange path is the response coming back.</div>
+      <div class="controls">
+        <button class="play" id="play-flow">▶ Play full flow</button>
+        <button class="play outline" id="step-flow">Step</button>
+      </div>
+
+      <div class="legend">
+        <span><span class="swatch" style="background:#141413"></span> request out</span>
+        <span><span class="swatch" style="background:#d97757"></span> response back</span>
+        <span><span class="swatch" style="background:#dedcd1"></span> process boundary</span>
+      </div>
+    </div>
+
+    <h3>What's actually happening underneath</h3>
+    <ol style="padding-left: 22px; margin-bottom: 14px; max-width: 680px;">
+      <li><strong>You hit Enter.</strong> React adds a user bubble to state and calls <code>window.api.query(prompt, runId, conversationId)</code>.</li>
+      <li><strong>Preload turns that into</strong> <code>ipcRenderer.invoke('agent:query', ...)</code>. The call crosses the process boundary.</li>
+      <li><strong>Main looks up</strong> the conversation's saved <code>cwd</code> and <code>sessionId</code>, builds an <code>AbortController</code>, and calls the Claude Agent SDK's <code>query({ prompt, options })</code>.</li>
+      <li><strong>The SDK calls the gateway</strong> (Portkey or Anthropic direct). Because <code>includePartialMessages: true</code>, the SDK starts emitting <code>stream_event</code> messages immediately as tokens arrive.</li>
+      <li><strong>Main forwards each event</strong> to the renderer via <code>sender.send('agent:message', ...)</code>. The renderer's <code>onMessage</code> callback applies them to the current assistant bubble's <code>blocks</code> array — text grows, thinking fills in, tool_use pills appear.</li>
+      <li><strong>If the agent invokes a tool</strong> like <code>Bash</code>, and you're in <em>Ask</em> mode, main pauses the SDK via the <code>canUseTool</code> callback — sends a <code>permission:request</code> event, awaits a <code>permission:respond</code> from the renderer.</li>
+      <li><strong>Tool runs, result comes back</strong> as a user-role message with <code>tool_result</code> content. The renderer renders a collapsible card.</li>
+      <li><strong>Agent does another assistant turn</strong> with the tool output in context — gets a fresh <code>message_start</code> with a new <code>message.id</code>, which means a new bubble.</li>
+      <li><strong>Eventually the SDK finishes.</strong> Main sends <code>agent:done</code>. Renderer's debounced effect saves the bubbles to disk 400ms later.</li>
+    </ol>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── SDK config ─────────────────── -->
+  <section id="sdk" class="reveal">
+    <h2 class="section-title">What we pass to the Claude Agent SDK</h2>
+    <p>Every <code>query()</code> call is built from these options. Here's what each one does.</p>
+
+    <table class="kvs">
+      <tr>
+        <th>model</th>
+        <td><code>claude-sonnet-4-6</code> by default. Override via <code>PORTICO_MODEL</code>. Sonnet is the right tier for chat — Opus when you need heavier reasoning, Haiku when you want fast and cheap.</td>
+      </tr>
+      <tr>
+        <th>systemPrompt</th>
+        <td>By default, extends the <code>claude_code</code> preset (the SDK's full agent prompt) with a Portico identity line. <code>PORTICO_PLAIN_SYSTEM_PROMPT=1</code> drops the preset for a faster, less agentic model.</td>
+      </tr>
+      <tr>
+        <th>permissionMode</th>
+        <td>
+          <strong>'ask'</strong> in first-run defaults — every tool call pauses for your approval.<br />
+          <strong>'bypassPermissions'</strong> when you set Settings → Permissions to "Auto-approve everything" — every tool runs immediately.
+        </td>
+      </tr>
+      <tr>
+        <th>canUseTool</th>
+        <td>Set in Ask mode. A callback that fires before each tool call. Returns <code>{ behavior: 'allow' }</code> or <code>{ behavior: 'deny', message }</code>. We use it to surface the inline approval card and (optionally) run a Haiku screening pass first.</td>
+      </tr>
+      <tr>
+        <th>includePartialMessages</th>
+        <td>Always <code>true</code>. Without it, you'd wait for the entire assistant turn before seeing any text — instead the SDK emits <code>stream_event</code> messages with <code>content_block_delta</code> events that we apply token-by-token.</td>
+      </tr>
+      <tr>
+        <th>cwd</th>
+        <td>The conversation's working directory (chosen via the right sidebar). The agent's Read / Write / Bash tools all run relative to this. Re-validated at query time — if the folder was deleted between sessions, we drop the cwd silently.</td>
+      </tr>
+      <tr>
+        <th>resume</th>
+        <td>The SDK's <code>session_id</code> from the previous turn. Without this, multi-turn memory breaks — every message would be a fresh context. Captured from the first <code>system.init</code> message and stored on the conversation.</td>
+      </tr>
+      <tr>
+        <th>abortController</th>
+        <td>An <code>AbortController</code> per run. Hitting the Stop button calls <code>controller.abort()</code> in main, which exits the SDK's stream cleanly.</td>
+      </tr>
+    </table>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── Filesystem ─────────────────── -->
+  <section id="fs" class="reveal">
+    <h2 class="section-title">Working directory + filesystem access</h2>
+    <p>
+      The agent has the full toolset: <code>Read</code>, <code>Write</code>, <code>Edit</code>,
+      <code>Bash</code>, <code>Glob</code>, <code>Grep</code>, etc. None of these are special — the SDK
+      executes them in the main process using normal Node APIs (<code>fs.readFile</code>, <code>child_process.spawn</code>).
+    </p>
+    <h3>How "open another directory" actually works</h3>
+    <ol style="padding-left: 22px; margin-bottom: 14px; max-width: 680px;">
+      <li>You click "Choose folder…" in the right sidebar.</li>
+      <li>Renderer calls <code>window.api.dialog.pickFolder()</code>.</li>
+      <li>Main opens Electron's native <code>dialog.showOpenDialog</code> with <code>properties: ['openDirectory']</code>. The user picks a folder.</li>
+      <li>Main returns the path. Renderer calls <code>conversations.setCwd(id, path)</code>.</li>
+      <li>Main validates: must exist, must be a directory, must be inside <code>$HOME</code> (the <code>isCwdSafe</code> guard). Persists to <code>conversations.json</code>.</li>
+      <li>The next <code>query()</code> call passes that path as <code>options.cwd</code>. The SDK runs every tool relative to it.</li>
+    </ol>
+    <h3>Why the validation matters</h3>
+    <p>
+      Without <code>isCwdSafe</code>, a compromised renderer could call <code>setCwd('/etc')</code> and the
+      next <code>Bash</code> tool call would happily run there. The same guard runs at write time
+      (<code>conversations:setCwd</code> handler) <em>and</em> at read time (in <code>agent:query</code>) so
+      a tampered <code>conversations.json</code> file can't bypass it either. Belt + suspenders.
+    </p>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── Permission UI ─────────────────── -->
+  <section id="permissions" class="reveal">
+    <h2 class="section-title">The permission dance (Ask mode)</h2>
+    <p>
+      In Ask mode the agent can't touch a tool without your nod. Optionally, a Haiku call screens the request first.
+    </p>
+
+    <div class="split">
+      <div class="card">
+        <div class="label">Inside main</div>
+        <p style="font-size: 13.5px; color: var(--graphite); margin-bottom: 10px;">
+          Per <code>query</code>, we pass a <code>canUseTool</code> async callback. Each tool the SDK wants to call awaits this:
+        </p>
+        <pre><span class="k">async</span> canUseTool(toolName, input, opts) {
+  <span class="k">const</span> requestId = `${runId}:${uuid()}`
+  <span class="k">if</span> (settings.autoScreen) {
+    send(<span class="s">'permission:screening'</span>, { requestId, toolName })
+    screening = <span class="k">await</span> screenTool(toolName, input, cwd)
+  }
+  send(<span class="s">'permission:request'</span>, { requestId, toolName, input, screening })
+  <span class="k">const</span> { allow } = <span class="k">await new</span> Promise(...)
+  <span class="k">return</span> allow ? { behavior: <span class="s">'allow'</span> } : { behavior: <span class="s">'deny'</span>, message: <span class="s">'denied'</span> }
+}</pre>
+      </div>
+      <div class="card">
+        <div class="label">Inside renderer</div>
+        <p style="font-size: 13.5px; color: var(--graphite); margin-bottom: 10px;">
+          The renderer treats <code>permission:screening</code> and <code>permission:request</code> like any other stream event. It adds a special "permission" bubble to the chat.
+        </p>
+        <div style="display: grid; gap: 8px;">
+          <div class="verdict-row"><span class="v-chip v-safe">Safe</span><code style="font-size: 11.5px;">ls / cat / git status</code></div>
+          <div class="verdict-row"><span class="v-chip v-cau">Caution</span><code style="font-size: 11.5px;">writes outside cwd · npm install from URL</code></div>
+          <div class="verdict-row"><span class="v-chip v-dan">Dangerous</span><code style="font-size: 11.5px;">rm -rf · sudo · ~/.ssh</code></div>
+        </div>
+        <p style="font-size: 12.5px; color: var(--dusty); margin-top: 10px;">
+          Click Approve → renderer fires <code>permission:respond</code> → main resolves the awaited
+          Promise → SDK runs the tool → result streams back.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <!-- ─────────────────── Security ─────────────────── -->
+  <section id="security" class="reveal">
+    <h2 class="section-title">Security at a glance</h2>
+    <p>What's protecting you from a bad prompt or a compromised renderer.</p>
+
+    <table class="kvs">
+      <tr>
+        <th>Renderer sandbox</th>
+        <td>Chromium runs in a sandbox. <code>contextIsolation: true</code>, <code>nodeIntegration: false</code> — the page can't <code>require('fs')</code> even if it wanted to.</td>
+      </tr>
+      <tr>
+        <th>API key boundary</th>
+        <td>The key lives in <code>process.env</code> in main. The renderer never sees it as plaintext after first save — it only learns <code>{ gatewayKeySet: boolean }</code>. Stored on disk encrypted via your OS keychain (<code>safeStorage</code>).</td>
+      </tr>
+      <tr>
+        <th>URL allowlist</th>
+        <td>Markdown links go through <code>shell.openExternal</code> only if their scheme is <code>https</code>, <code>http</code>, or <code>mailto</code>. <code>file://</code>, <code>vscode://</code>, <code>slack://</code>, <code>javascript:</code> — all blocked.</td>
+      </tr>
+      <tr>
+        <th>Path validation</th>
+        <td><code>isCwdSafe</code> blocks the agent from running outside your home folder. <code>isPathRevealable</code> blocks Finder side-effects from probing system paths. Validated server-side.</td>
+      </tr>
+      <tr>
+        <th>Tool permission</th>
+        <td>First-run defaults to "Ask" mode — every tool waits for your approval. Optional Haiku screening (~300ms) tags each call Safe / Caution / Dangerous before showing the prompt.</td>
+      </tr>
+      <tr>
+        <th>Settings whitelist</th>
+        <td>The <code>appSettings.set</code> handler only writes <code>permissionMode</code>, <code>autoScreen</code>, <code>gatewayBaseUrl</code>. A renderer compromise can't poison arbitrary keys into settings.json.</td>
+      </tr>
+      <tr>
+        <th>Atomic writes + corrupt-file backup</th>
+        <td>Every settings/conversation write goes <code>tmp file → rename</code>. If <code>conversations.json</code> ever fails to parse, we move it aside as <code>.corrupt-&lt;ts&gt;</code> instead of overwriting with <code>{}</code>.</td>
+      </tr>
+      <tr>
+        <th>90 unit tests</th>
+        <td>The guards, the persistence layer, the API key handling, the screening parser — all covered in <code>tests/</code>. Run with <code>npm test</code>.</td>
+      </tr>
+    </table>
+
+    <h3>What's still risky and why</h3>
+    <p>
+      The agent runs with the <em>full toolset</em>. Even with Ask mode, if you click Approve on a
+      <code>Bash rm -rf ~</code> request, that runs. The screening verdict is advisory — the model is
+      smart but not infallible. <strong>Treat Approve like running the command yourself.</strong>
+    </p>
+    <p>
+      For multi-tenant or external distribution: don't ship with <code>bypassPermissions</code> as the
+      default. The first-run default of Ask + Auto-screen is the safe shape; Auto mode should be opt-in.
+    </p>
+  </section>
+
+  <footer>
+    Generated for Portico v0.1 · <a class="inline" href="https://docs.claude.com/en/agent-sdk/typescript">Agent SDK reference</a> · <a class="inline" href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron process model</a>
+  </footer>
+
+</main>
+
+<script>
+  // Reveal-on-scroll
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.classList.add('show')
+        io.unobserve(e.target)
+      }
+    }
+  }, { threshold: 0.12 })
+  document.querySelectorAll('.reveal, .step').forEach(el => io.observe(el))
+
+  // ─────────── Three-process flow animation ───────────
+  const procs = {
+    renderer: document.querySelector('[data-proc="renderer"]'),
+    preload:  document.querySelector('[data-proc="preload"]'),
+    main:     document.querySelector('[data-proc="main"]')
+  }
+  const ball = document.getElementById('ball')
+  const stepProcs = document.getElementById('step-procs')
+  const playBtn = document.getElementById('play-procs')
+
+  function setActive(name) {
+    Object.entries(procs).forEach(([k, el]) => {
+      if (k === name) el.classList.add('active'); else el.classList.remove('active')
+    })
+  }
+  function setBall(pct, color = '#d97757') {
+    ball.style.left = `${pct}%`
+    ball.style.background = color
+    ball.style.boxShadow = `0 0 0 4px ${color === '#d97757' ? 'rgba(217,119,87,0.18)' : 'rgba(74,138,94,0.18)'}`
+  }
+
+  const procSteps = [
+    { ms: 0,    pct: 16.66, color: '#d97757', proc: 'renderer', text: '<strong>1.</strong> User hits Enter. The renderer calls window.api.query(prompt, runId, convId).' },
+    { ms: 700,  pct: 50,    color: '#d97757', proc: 'preload',  text: '<strong>2.</strong> Preload forwards via ipcRenderer.invoke("agent:query", ...).' },
+    { ms: 1400, pct: 83.33, color: '#d97757', proc: 'main',     text: '<strong>3.</strong> Main calls the Claude Agent SDK. The SDK opens a streaming connection to the gateway.' },
+    { ms: 2400, pct: 50,    color: '#4a8a5e', proc: 'preload',  text: '<strong>4.</strong> Tokens stream back. Main pushes each as an "agent:message" event over IPC.' },
+    { ms: 3100, pct: 16.66, color: '#4a8a5e', proc: 'renderer', text: '<strong>5.</strong> Renderer’s onMessage handler applies the delta to the live assistant bubble.' }
+  ]
+  let procTimers = []
+  function playProcs() {
+    procTimers.forEach(clearTimeout); procTimers = []
+    procSteps.forEach((s, i) => {
+      procTimers.push(setTimeout(() => {
+        setBall(s.pct, s.color)
+        setActive(s.proc)
+        stepProcs.innerHTML = s.text
+      }, s.ms))
+    })
+    procTimers.push(setTimeout(() => {
+      setActive(null)
+      stepProcs.innerHTML = 'Done. Click play to replay.'
+    }, 4000))
+  }
+  playBtn.addEventListener('click', playProcs)
+
+  // ─────────── End-to-end flow animation ───────────
+  const flowBall = document.getElementById('flow-ball')
+  const flowStep = document.getElementById('flow-step')
+  const playFlow = document.getElementById('play-flow')
+  const stepFlow = document.getElementById('step-flow')
+
+  // Each step: animate the ball along a path. Path endpoints come from the SVG arrows.
+  const flowSteps = [
+    { from: [100,  40], to: [300,  40], color: '#141413', label: '<strong>1.</strong> Renderer calls window.api.query(...)' },
+    { from: [300,  70], to: [500,  70], color: '#141413', label: '<strong>2.</strong> Preload forwards over IPC' },
+    { from: [500, 100], to: [700, 100], color: '#141413', label: '<strong>3.</strong> Main calls the Agent SDK; SDK hits the gateway' },
+    { from: [700, 130], to: [500, 130], color: '#d97757', label: '<strong>4.</strong> Tokens start streaming back' },
+    { from: [500, 160], to: [300, 160], color: '#d97757', label: '<strong>5.</strong> Main forwards each as an "agent:message" event' },
+    { from: [300, 190], to: [100, 190], color: '#d97757', label: '<strong>6.</strong> Renderer applies the delta to the live bubble' }
+  ]
+
+  let flowIndex = 0
+  let flowAnim = null
+
+  function animateBall(from, to, color, dur, done) {
+    flowBall.setAttribute('fill', color)
+    flowBall.setAttribute('opacity', '1')
+    const start = performance.now()
+    function frame(now) {
+      const t = Math.min(1, (now - start) / dur)
+      const eased = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t
+      const x = from[0] + (to[0] - from[0]) * eased
+      const y = from[1] + (to[1] - from[1]) * eased
+      flowBall.setAttribute('cx', x)
+      flowBall.setAttribute('cy', y)
+      if (t < 1) flowAnim = requestAnimationFrame(frame); else done && done()
+    }
+    flowAnim = requestAnimationFrame(frame)
+  }
+
+  function runFlowStep(i, autoNext) {
+    const s = flowSteps[i]
+    flowStep.innerHTML = s.label
+    animateBall(s.from, s.to, s.color, 700, () => {
+      if (autoNext && i + 1 < flowSteps.length) {
+        setTimeout(() => runFlowStep(i + 1, true), 250)
+      } else if (autoNext) {
+        setTimeout(() => { flowBall.setAttribute('opacity', '0'); flowStep.innerHTML = 'Done. Click play again to replay.' }, 600)
+      }
+    })
+  }
+
+  playFlow.addEventListener('click', () => {
+    if (flowAnim) cancelAnimationFrame(flowAnim)
+    flowIndex = 0
+    runFlowStep(0, true)
+  })
+  stepFlow.addEventListener('click', () => {
+    if (flowAnim) cancelAnimationFrame(flowAnim)
+    runFlowStep(flowIndex, false)
+    flowIndex = (flowIndex + 1) % flowSteps.length
+  })
+</script>
+
+</body>
+</html>

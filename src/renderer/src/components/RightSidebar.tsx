@@ -5,9 +5,11 @@ interface Props {
   collapsed: boolean
   onToggleCollapsed: () => void
   cwd: string | null
+  trustProject: boolean
   onChangeCwd: () => void
   onClearCwd: () => void
   onRevealCwd: () => void
+  onToggleTrustProject: (next: boolean) => void
 }
 
 function shortenPath(p: string, maxLen = 40): string {
@@ -18,7 +20,16 @@ function shortenPath(p: string, maxLen = 40): string {
 }
 
 export function RightSidebar(props: Props): React.JSX.Element {
-  const { collapsed, onToggleCollapsed, cwd, onChangeCwd, onClearCwd, onRevealCwd } = props
+  const {
+    collapsed,
+    onToggleCollapsed,
+    cwd,
+    trustProject,
+    onChangeCwd,
+    onClearCwd,
+    onRevealCwd,
+    onToggleTrustProject
+  } = props
 
   if (collapsed) {
     return (
@@ -71,6 +82,21 @@ export function RightSidebar(props: Props): React.JSX.Element {
               <p className="mt-2 text-[11px] text-dusty">
                 Read / Write / Bash run in this folder.
               </p>
+
+              <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-[6px] border border-parchment bg-vellum px-2 py-2 text-[11.5px] text-graphite">
+                <input
+                  type="checkbox"
+                  checked={trustProject}
+                  onChange={(e) => onToggleTrustProject(e.target.checked)}
+                  className="mt-0.5 accent-ink"
+                />
+                <span>
+                  <strong className="text-ink">Trust this folder's <code className="font-mono">.claude/</code></strong>
+                  <span className="block mt-0.5 text-dusty">
+                    Loads CLAUDE.md and skills from here. Off by default — only enable for folders you trust, since project-level skills can inject instructions into the agent.
+                  </span>
+                </span>
+              </label>
             </>
           ) : (
             <>

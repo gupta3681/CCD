@@ -115,6 +115,44 @@ describe('cwd persistence', () => {
   })
 })
 
+describe('trustProject persistence', () => {
+  it('defaults to false when never set', async () => {
+    const { conv } = await load()
+    conv.save('id', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'hi' }] }])
+    expect(conv.getTrustProject('id')).toBe(false)
+  })
+
+  it('round-trips true', async () => {
+    const { conv } = await load()
+    conv.setCwd('id', '/work')
+    conv.setTrustProject('id', true)
+    expect(conv.getTrustProject('id')).toBe(true)
+  })
+
+  it('setTrustProject creates a stub when no record exists', async () => {
+    const { conv } = await load()
+    conv.setTrustProject('new', true)
+    expect(conv.getTrustProject('new')).toBe(true)
+  })
+
+  it('persists across save()', async () => {
+    const { conv } = await load()
+    conv.setTrustProject('id', true)
+    conv.save('id', [{ id: 'b', role: 'user', blocks: [{ type: 'text', text: 'x' }] }])
+    expect(conv.getTrustProject('id')).toBe(true)
+  })
+
+  it('survives a setCwd call (the renderer is responsible for resetting)', async () => {
+    // The IPC handler in main resets trust when cwd changes; the conversations
+    // module itself doesn't do that — keeps the storage layer dumb.
+    const { conv } = await load()
+    conv.setCwd('id', '/old')
+    conv.setTrustProject('id', true)
+    conv.setCwd('id', '/new')
+    expect(conv.getTrustProject('id')).toBe(true)
+  })
+})
+
 describe('migration', () => {
   it('wraps legacy { text } bubbles into a single text block on read', async () => {
     const { util } = await load()
