@@ -370,22 +370,44 @@ function App(): React.JSX.Element {
   }
 
   async function stop(): Promise<void> {
-    if (!activeRunId) return
-    await window.api.cancel(activeRunId)
+    // Always reset the renderer state, even if the cancel doesn't reach a
+    // live runId in main. The whole point of Stop is to give the user an
+    // escape hatch — if our state is somehow desynced from main's, the user
+    // shouldn't be stuck. Also clears in-flight bubble tracking.
+    const runIdToCancel = activeRunId
+    setBusy(false)
+    setActiveRunId(null)
+    if (runIdToCancel) {
+      currentMessageIdRef.current.delete(runIdToCancel)
+      try {
+        await window.api.cancel(runIdToCancel)
+      } catch {
+        // ignore — UI already unstuck
+      }
+    }
   }
 
   async function newSession(): Promise<void> {
-    if (busy) return
+    // Don't gate on busy — if the UI is stuck, New session is the user's
+    // escape hatch. Force-reset everything.
+    setBusy(false)
+    setActiveRunId(null)
     setConversationId(crypto.randomUUID())
     setBubbles([])
     setCwd(null)
     setTrustProject(false)
     setContextTokens(null)
     loadedBubblesRef.current = null
+    currentMessageIdRef.current.clear()
   }
 
   async function selectSession(id: string): Promise<void> {
-    if (busy || id === conversationId) return
+    if (id === conversationId) return
+    // Same logic as newSession — don't let a stuck busy state lock the user
+    // out of switching conversations.
+    setBusy(false)
+    setActiveRunId(null)
+    currentMessageIdRef.current.clear()
     const conv = await window.api.conversations.get(id)
     if (!conv) return
     setConversationId(id)
