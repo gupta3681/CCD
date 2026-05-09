@@ -23,16 +23,15 @@ const READ_ONLY_TOOLS = [
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
-// Plain system prompt (no claude_code preset). The preset adds many
-// kilobytes of Claude Code agent guidance to every request, which we don't
-// need for a chat surface and which materially slows down responses. Set
-// PORTICO_USE_CLAUDE_CODE_PRESET=1 if you want it back.
-const DEFAULT_SYSTEM_PROMPT =
+// Default: extend the Claude Code agent preset with a Portico identity line.
+// The preset is required for full agent behavior (tool guidance, etc.) so we
+// keep it on by default. Override with a plain string via PORTICO_SYSTEM_PROMPT,
+// or disable the preset entirely with PORTICO_PLAIN_SYSTEM_PROMPT=1.
+const PORTICO_APPEND =
   'You are Portico, a desktop assistant for an internal team, routed through the ' +
-  "organization's LLM gateway. Be concise and direct. Format answers with Markdown " +
-  '(headings, lists, code fences) when it helps readability. When you need to call ' +
-  'a tool, do so without narrating the call. Prefer answering immediately over ' +
-  'asking clarifying questions when the request is unambiguous.'
+  "organization's LLM gateway. Format answers with Markdown (headings, lists, code " +
+  'fences, tables) when it helps readability. Be concise. Prefer answering ' +
+  'immediately over asking clarifying questions when the request is unambiguous.'
 
 function modelFor(): string {
   return process.env.PORTICO_MODEL?.trim() || DEFAULT_MODEL
@@ -44,10 +43,8 @@ function systemPromptFor():
   | undefined {
   const override = process.env.PORTICO_SYSTEM_PROMPT?.trim()
   if (override) return override
-  if (process.env.PORTICO_USE_CLAUDE_CODE_PRESET === '1') {
-    return { type: 'preset', preset: 'claude_code', append: DEFAULT_SYSTEM_PROMPT }
-  }
-  return DEFAULT_SYSTEM_PROMPT
+  if (process.env.PORTICO_PLAIN_SYSTEM_PROMPT === '1') return PORTICO_APPEND
+  return { type: 'preset', preset: 'claude_code', append: PORTICO_APPEND }
 }
 
 function createWindow(): BrowserWindow {
