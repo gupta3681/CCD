@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
 import { BubbleView } from './components/BubbleView'
 import type { Block, Bubble, ConversationSummary } from '../../preload'
@@ -51,31 +52,35 @@ function App(): React.JSX.Element {
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
   const scrollerRef = useRef<HTMLDivElement>(null)
 
-  // Tracks the in-flight assistant bubble id per run so deltas know where to land.
-  const inFlightBubbleIdRef = useRef<Map<string, string>>(new Map())
-
   const refreshList = useCallback(async () => {
     const list = await window.api.conversations.list()
     setConversations(list)
   }, [])
 
-  // Apply a stream_event into the current bubble list.
+  // Apply a stream_event into the current bubble list. The bubbleId is
+  // deterministic from runId, so each updater finds or creates its own
+  // bubble — no inter-updater state races.
   const applyStreamEvent = useCallback((runId: string, ev: StreamEvent) => {
-    setBubbles((prev) => {
-      let nextBubbles = prev
-      const existingId = inFlightBubbleIdRef.current.get(runId)
+    if (
+      ev.type !== 'content_block_start' &&
+      ev.type !== 'content_block_delta' &&
+      ev.type !== 'message_start'
+    ) {
+      return
+    }
 
-      // Make sure we have an in-flight assistant bubble for this run.
-      let bubbleId = existingId
-      if (!bubbleId) {
-        if (ev.type !== 'message_start' && ev.type !== 'content_block_start') return prev
-        bubbleId = `${runId}-a`
-        inFlightBubbleIdRef.current.set(runId, bubbleId)
+    setBubbles((prev) => {
+      const bubbleId = `${runId}-a`
+      let nextBubbles = prev
+      let idx = nextBubbles.findIndex((b) => b.id === bubbleId)
+      if (idx === -1) {
         nextBubbles = [...nextBubbles, { id: bubbleId, role: 'assistant', blocks: [] }]
+        idx = nextBubbles.length - 1
       }
 
-      const idx = nextBubbles.findIndex((b) => b.id === bubbleId)
-      if (idx === -1) return nextBubbles
+      // message_start just guarantees the bubble exists; nothing else to do.
+      if (ev.type === 'message_start') return nextBubbles
+
       const bubble = nextBubbles[idx]
       const blocks = [...(bubble.blocks ?? [])]
 
@@ -91,7 +96,8 @@ function App(): React.JSX.Element {
                 : null
         if (!newBlock) return nextBubbles
         blocks[ev.index] = newBlock
-      } else if (ev.type === 'content_block_delta') {
+      } else {
+        // content_block_delta
         const existing = blocks[ev.index]
         if (!existing) return nextBubbles
         const d = ev.delta
@@ -100,9 +106,7 @@ function App(): React.JSX.Element {
         } else if (d.type === 'thinking_delta' && existing.type === 'thinking') {
           blocks[ev.index] = { ...existing, thinking: existing.thinking + d.thinking }
         }
-        // input_json_delta and signature_delta are intentionally ignored for V1.
-      } else {
-        return nextBubbles
+        // input_json_delta and signature_delta intentionally ignored for V1.
       }
 
       nextBubbles = [...nextBubbles]
@@ -141,12 +145,8 @@ function App(): React.JSX.Element {
       // stream events already built. Ignore.
     })
 
-    const offDone = window.api.onDone((runId) => {
-      inFlightBubbleIdRef.current.delete(runId)
-      setBusy(false)
-    })
+    const offDone = window.api.onDone(() => setBusy(false))
     const offErr = window.api.onError((runId, err) => {
-      inFlightBubbleIdRef.current.delete(runId)
       setBubbles((prev) => [
         ...prev,
         {
