@@ -452,7 +452,7 @@ function App(): React.JSX.Element {
           <div className="flex items-baseline gap-2 [-webkit-app-region:no-drag]">
             <span className="text-[11px] text-dusty">Powered by Claude · v0.1</span>
           </div>
-          <div className="flex items-center gap-4 text-[11px] text-dusty [-webkit-app-region:no-drag]">
+          <div className="flex items-center gap-3 text-[11px] text-dusty [-webkit-app-region:no-drag]">
             {gateway ? (
               <div className="flex items-center gap-2">
                 <span
@@ -464,6 +464,12 @@ function App(): React.JSX.Element {
                   {gateway.gateway} · {gateway.model}
                   {gateway.configured ? '' : ' · not configured'}
                 </span>
+                {contextTokens != null && (
+                  <>
+                    <span className="text-stone">·</span>
+                    <ContextMeter tokens={contextTokens} max={CONTEXT_WINDOW_MAX} />
+                  </>
+                )}
               </div>
             ) : (
               <span>…</span>
@@ -540,9 +546,6 @@ function App(): React.JSX.Element {
                 </button>
               )}
             </div>
-            <div className="flex justify-end">
-              <ContextMeter tokens={contextTokens} max={CONTEXT_WINDOW_MAX} model={gateway?.model} />
-            </div>
           </div>
         </div>
       </div>
@@ -566,69 +569,51 @@ function App(): React.JSX.Element {
 
 function ContextMeter({
   tokens,
-  max,
-  model
+  max
 }: {
   tokens: number | null
   max: number
-  model: string | undefined
 }): React.JSX.Element | null {
-  // Hide entirely until we have real usage data — a placeholder ring with "—"
-  // is more noisy than informative.
+  // Hide until we have real usage data — header has plenty of other info.
   if (tokens == null) return null
 
-  const used = tokens
-  const pct = Math.min(1, used / max)
+  const pct = Math.min(1, tokens / max)
   const pctLabel = pct < 0.01 ? '<1' : Math.round(pct * 100).toString()
-  const r = 5
+  const r = 4.5
   const c = 2 * Math.PI * r
   const dash = c * pct
   const tone =
-    pct >= 0.85
-      ? { ring: 'text-terra', text: 'text-terra', border: 'border-terra/30', bg: 'bg-terra/5' }
-      : pct >= 0.6
-        ? {
-            ring: 'text-[#b89456]',
-            text: 'text-[#7a5d2e]',
-            border: 'border-[#b89456]/30',
-            bg: 'bg-[#b89456]/5'
-          }
-        : {
-            ring: 'text-graphite',
-            text: 'text-graphite',
-            border: 'border-parchment',
-            bg: 'bg-snow'
-          }
-
-  const tooltip = `Context: ${used.toLocaleString()} / ${max.toLocaleString()} tokens (${pctLabel}%)${
-    model ? ` · ${model}` : ''
-  }`
+    pct >= 0.85 ? 'text-terra' : pct >= 0.6 ? 'text-[#b89456]' : 'text-graphite'
 
   return (
-    <div
-      className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10.5px] ${tone.border} ${tone.bg}`}
-      title={tooltip}
-    >
-      <svg width="14" height="14" viewBox="0 0 14 14" className={tone.ring}>
-        <circle cx="7" cy="7" r={r} stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" fill="none" />
+    <span className="inline-flex items-center gap-1">
+      <svg width="11" height="11" viewBox="0 0 11 11" className={tone}>
         <circle
-          cx="7"
-          cy="7"
+          cx="5.5"
+          cy="5.5"
           r={r}
           stroke="currentColor"
-          strokeWidth="2"
+          strokeOpacity="0.22"
+          strokeWidth="1.5"
+          fill="none"
+        />
+        <circle
+          cx="5.5"
+          cy="5.5"
+          r={r}
+          stroke="currentColor"
+          strokeWidth="1.5"
           fill="none"
           strokeDasharray={`${dash} ${c}`}
           strokeLinecap="round"
-          transform="rotate(-90 7 7)"
+          transform="rotate(-90 5.5 5.5)"
           style={{ transition: 'stroke-dasharray 0.4s ease' }}
         />
       </svg>
-      <span className={`font-medium ${tone.text}`}>{formatTokens(used)}</span>
-      <span className="text-stone">/ {formatTokens(max)}</span>
-      <span className="text-stone">·</span>
-      <span className={tone.text}>{pctLabel}%</span>
-    </div>
+      <span className={tone}>
+        {formatTokens(tokens)}/{formatTokens(max)} · {pctLabel}%
+      </span>
+    </span>
   )
 }
 
