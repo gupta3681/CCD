@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Block, Bubble, Verdict } from '../../../preload'
@@ -54,11 +54,16 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
     )
   }
 
+  // Once any text block in this assistant turn has content, the thinking is
+  // "done" — auto-collapse it so the answer is visible.
+  const hasFinalText = blocks.some((b) => b.type === 'text' && b.text.trim().length > 0)
+
   return (
     <div className="flex justify-start">
       <div className="prose-portico flex max-w-[85%] flex-col gap-2 rounded-[9.6px] border border-parchment bg-snow px-4 py-3 text-[15px] leading-[1.5] text-ink">
         {blocks.map((blk, i) => {
-          if (blk.type === 'thinking') return <ThinkingBlock key={i} text={blk.thinking} />
+          if (blk.type === 'thinking')
+            return <ThinkingBlock key={i} text={blk.thinking} done={hasFinalText} />
           if (blk.type === 'tool_use') return <ToolUseBlock key={i} name={blk.name} input={blk.input} />
           if (blk.type === 'text') return <TextBlock key={i} text={blk.text} />
           return null
@@ -73,8 +78,18 @@ function TextBlock({ text }: { text: string }): React.JSX.Element {
   return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
 }
 
-function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
+function ThinkingBlock({ text, done }: { text: string; done: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(true)
+  // Auto-collapse once when the assistant's final text starts arriving. Tracked
+  // by a ref so a subsequent re-render doesn't override the user re-expanding it.
+  const autoCollapsedRef = useRef(false)
+  useEffect(() => {
+    if (done && !autoCollapsedRef.current) {
+      autoCollapsedRef.current = true
+      setOpen(false)
+    }
+  }, [done])
+
   const lines = text.trim().split('\n').filter(Boolean)
   const preview = lines.length > 0 ? lines[lines.length - 1] : '…'
   return (
