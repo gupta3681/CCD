@@ -9,22 +9,6 @@ import * as userSettings from './userSettings'
 
 loadDotenv()
 
-// V1 toolset: read-only. allowedTools auto-approves these, disallowedTools
-// hard-denies the destructive ones. Both lists are needed because under
-// permissionMode: 'bypassPermissions' a tool not in allowedTools is still
-// auto-approved unless explicitly disallowed.
-const READ_ONLY_TOOLS = [
-  'Read',
-  'Glob',
-  'Grep',
-  'WebSearch',
-  'WebFetch',
-  'TodoWrite',
-  'AskUserQuestion'
-]
-
-const DENIED_TOOLS = ['Write', 'Edit', 'Bash', 'NotebookEdit', 'KillShell']
-
 // runId -> AbortController, so the renderer can cancel a streaming query.
 const activeRuns = new Map<string, AbortController>()
 
@@ -153,8 +137,9 @@ app.whenReady().then(() => {
           options: {
             model: modelFor(),
             systemPrompt: systemPromptFor(),
-            allowedTools: READ_ONLY_TOOLS,
-            disallowedTools: DENIED_TOOLS,
+            // Full toolset — Read, Write, Edit, Bash, Glob, Grep, Web*, Task, etc.
+            // bypassPermissions auto-approves them all. Add disallowedTools or
+            // wire a canUseTool callback when shipping to less-trusted users.
             permissionMode: 'bypassPermissions',
             includePartialMessages: true,
             abortController: controller,

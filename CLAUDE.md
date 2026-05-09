@@ -36,12 +36,14 @@ src/
 
 ## Tool policy (V1)
 
-- **Allowed (auto-approved):** `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`, `TodoWrite`, `AskUserQuestion`
-- **Denied (hard block):** `Write`, `Edit`, `Bash`, `NotebookEdit`, `KillShell`
+**Currently: full toolset, all auto-approved.** Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Task, NotebookEdit, TodoWrite, AskUserQuestion — every tool the SDK ships, auto-approved via `permissionMode: 'bypassPermissions'`.
 
-`allowedTools` alone is **not** a deny list — under `permissionMode: 'bypassPermissions'`, anything not denied still runs. Always update both lists when changing the policy.
+This is "single-trusted-user" mode. The agent can modify files in cwd and run shell commands. **Don't ship this configuration to anyone you wouldn't hand a bash prompt to.** Before shipping more broadly:
 
-To re-enable destructive tools, drop `bypassPermissions` and wire a `canUseTool` callback that surfaces an approve/deny prompt in the renderer (v1.1 work).
+- **Quickest restriction**: add `disallowedTools: ['Bash', 'Write', 'Edit', 'NotebookEdit', 'KillShell']` to the `query()` options.
+- **Right answer**: drop `bypassPermissions`, wire a `canUseTool` callback that surfaces an approve/deny prompt in the renderer.
+
+`allowedTools` alone is **not** a deny list — under `bypassPermissions`, anything not in `disallowedTools` still runs.
 
 ## Env vars (`.env`, gitignored)
 

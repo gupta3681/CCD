@@ -10,7 +10,7 @@ The product is named *Portico*. The repo dir name (`CCD`) is internal and unchan
 - Claude Agent SDK runs in the main process.
 - Portkey configured via env vars (`ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`).
 - One chat surface with multi-turn memory (session resume).
-- **Read-only toolset** — Read / Glob / Grep / WebSearch / WebFetch / TodoWrite / AskUserQuestion. No Write, no Edit, no Bash. The permission-prompt UI lands in v1.1 and unlocks the rest.
+- **Full toolset, auto-approved** — Read, Write, Edit, Bash, Glob, Grep, Web*, Task, etc. Permission-prompt UI is the v1.1 milestone before this can ship to less-trusted users.
 
 ## Setup
 

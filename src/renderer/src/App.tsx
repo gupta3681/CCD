@@ -290,8 +290,8 @@ function App(): React.JSX.Element {
                   What can I help you with?
                 </h1>
                 <p className="mt-3 text-[14px] text-dusty">
-                  Routed through {gateway?.gateway ?? 'your configured gateway'}. Read-only mode — I can
-                  read, search, and answer, but I won't change files or run commands.
+                  Routed through {gateway?.gateway ?? 'your configured gateway'}. Full toolset — I can
+                  read, write, edit files, run shell commands, and search the web.
                 </p>
               </div>
             )}
