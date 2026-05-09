@@ -14,7 +14,8 @@ asarUnpack:
 win:
   executableName: portico
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  # Arch in filename so x64 and arm64 builds don't overwrite each other.
+  artifactName: ${name}-${version}-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
