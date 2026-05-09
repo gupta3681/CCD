@@ -509,8 +509,8 @@ function App(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="border-t border-parchment bg-vellum px-6 py-4">
-          <div className="mx-auto flex max-w-[760px] flex-col gap-1">
+        <div className="border-t border-parchment bg-vellum px-6 pb-4 pt-3">
+          <div className="mx-auto flex max-w-[760px] flex-col gap-2">
             <div className="flex items-end gap-3">
               <textarea
                 className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
@@ -540,7 +540,7 @@ function App(): React.JSX.Element {
                 </button>
               )}
             </div>
-            <div className="mt-1 flex justify-end">
+            <div className="flex justify-end">
               <ContextMeter tokens={contextTokens} max={CONTEXT_WINDOW_MAX} model={gateway?.model} />
             </div>
           </div>
@@ -572,44 +572,62 @@ function ContextMeter({
   tokens: number | null
   max: number
   model: string | undefined
-}): React.JSX.Element {
-  const used = tokens ?? 0
+}): React.JSX.Element | null {
+  // Hide entirely until we have real usage data — a placeholder ring with "—"
+  // is more noisy than informative.
+  if (tokens == null) return null
+
+  const used = tokens
   const pct = Math.min(1, used / max)
-  // arc from 0 -> circumference based on pct
-  const r = 7
+  const pctLabel = pct < 0.01 ? '<1' : Math.round(pct * 100).toString()
+  const r = 5
   const c = 2 * Math.PI * r
   const dash = c * pct
-  const colorClass = pct >= 0.85 ? 'text-terra' : pct >= 0.6 ? 'text-[#b89456]' : 'text-graphite'
+  const tone =
+    pct >= 0.85
+      ? { ring: 'text-terra', text: 'text-terra', border: 'border-terra/30', bg: 'bg-terra/5' }
+      : pct >= 0.6
+        ? {
+            ring: 'text-[#b89456]',
+            text: 'text-[#7a5d2e]',
+            border: 'border-[#b89456]/30',
+            bg: 'bg-[#b89456]/5'
+          }
+        : {
+            ring: 'text-graphite',
+            text: 'text-graphite',
+            border: 'border-parchment',
+            bg: 'bg-snow'
+          }
 
-  const tooltip = tokens == null
-    ? 'Context window — fills up after the first reply.'
-    : `${formatTokens(used)} / ${formatTokens(max)} (${Math.round(pct * 100)}%)${
-        model ? ` · ${model}` : ''
-      }`
+  const tooltip = `Context: ${used.toLocaleString()} / ${max.toLocaleString()} tokens (${pctLabel}%)${
+    model ? ` · ${model}` : ''
+  }`
 
   return (
     <div
-      className="flex items-center gap-1.5 text-[10.5px] text-dusty"
+      className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10.5px] ${tone.border} ${tone.bg}`}
       title={tooltip}
     >
-      <span>
-        {tokens == null ? '—' : `${formatTokens(used)} / ${formatTokens(max)}`}
-      </span>
-      <svg width="18" height="18" viewBox="0 0 18 18" className={colorClass}>
-        <circle cx="9" cy="9" r={r} stroke="currentColor" strokeOpacity="0.18" strokeWidth="2" fill="none" />
+      <svg width="14" height="14" viewBox="0 0 14 14" className={tone.ring}>
+        <circle cx="7" cy="7" r={r} stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" fill="none" />
         <circle
-          cx="9"
-          cy="9"
+          cx="7"
+          cy="7"
           r={r}
           stroke="currentColor"
           strokeWidth="2"
           fill="none"
           strokeDasharray={`${dash} ${c}`}
           strokeLinecap="round"
-          transform="rotate(-90 9 9)"
+          transform="rotate(-90 7 7)"
           style={{ transition: 'stroke-dasharray 0.4s ease' }}
         />
       </svg>
+      <span className={`font-medium ${tone.text}`}>{formatTokens(used)}</span>
+      <span className="text-stone">/ {formatTokens(max)}</span>
+      <span className="text-stone">·</span>
+      <span className={tone.text}>{pctLabel}%</span>
     </div>
   )
 }
