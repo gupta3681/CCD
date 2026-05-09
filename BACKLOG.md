@@ -4,6 +4,80 @@ Things we've decided are worth doing but aren't doing now. Add entries with date
 
 ---
 
+## Refactor: prompt assembler + turn hooks
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** The current `agent:query` handler does too much in one place — gateway resolution, settings read, conversation lookup, soul.md read, system-prompt assembly, interrupt-note prepend, settingSources decision, mcpServers wiring, canUseTool callback, AbortController bookkeeping, streaming loop, error/cancel triage. ~150 lines of imperative do-everything. Adding a feature today (pre-turn linter, post-turn observer, optional system-prompt addendum, custom logging hook) means surgery in the middle of that handler. The risk is a regression in the streaming + permission flow, which we just stabilized.
+
+**The win:** Cleanly extract two units:
+
+1. **`promptAssembler.ts`** — pure functions, no side effects, no IPC. Given a `TurnContext` (conversation, user, soul, settings, env), returns the full `query()` options object. Easy to unit test, easy to reason about.
+
+2. **`hooks.ts`** — registry of named hook points the rest of the codebase can subscribe to. Modeled after Claude Code's hook system. Each hook is one-direction (just notification) OR transformative (mutates the turn context). Hook execution is deterministic: registered order, timeout per hook, errors logged but never block the turn.
+
+**Hook points:**
+- `preTurn(ctx)` → can transform `ctx.userPrompt`, `ctx.systemAppend`, `ctx.mcpServers`. Use case: prepend "user was interrupted" note (currently inline in `agent:query`); optional pre-call linter on prompt content.
+- `postTurn(ctx, result)` → notification only. Use case: Buddy `buddy_observe` call, telemetry, auto-archive after N idle days.
+- `preToolUse(ctx, toolName, input)` → can short-circuit (`{ allow: true | false, reason }`) or modify input. Use case: the per-session pattern allowlist check (currently inline); future "block all rm -rf without explicit confirm" rule.
+- `postToolUse(ctx, toolName, input, output)` → notification only. Use case: per-tool log collation; future "warn if tool result includes API keys".
+
+**Module layout:**
+```
+src/main/
+  agent/
+    promptAssembler.ts      # buildSystemPrompt, buildUserPrompt, buildOptions
+    hooks.ts                # registry + dispatch + types
+    turnContext.ts          # TurnContext type + builder
+    runner.ts               # the actual query() loop, ~50 lines
+  index.ts                  # IPC plumbing only — delegates to agent/runner
+```
+
+**Migration plan:**
+1. Extract `promptAssembler.ts` first — no behavior change, just move the system-prompt builder. Add unit tests for each branch (preset / plain / override / interrupt-prepend).
+2. Add `hooks.ts` with registration API + empty hook points. Wire dispatch into the existing `agent:query` handler at the four points above; existing inline logic becomes the first registered hook for each point. Behavior identical, code unchanged in net effect.
+3. Replace the inline session-allowlist check with a registered `preToolUse` hook. Replace the inline interrupt-prepend with a `preTurn` hook. Replace the inline conversations.save / refreshList with a `postTurn` hook chain.
+4. Move the runner loop into `runner.ts`. `index.ts` shrinks to pure IPC dispatch.
+
+**What you'd feel:**
+- `agent:query` IPC handler drops from ~150 lines to ~25.
+- New tests: `promptAssembler.test.ts` (pure, fast), `hooks.test.ts` (registry semantics, error isolation, ordering).
+- Adding a new feature like Buddy's auto-observe = one hook registration in `runner.ts` setup, no edits to the turn loop.
+- Zero user-visible change.
+
+**Pre-req to revisit:** core turn loop has been stable for 2+ weeks (no regressions on streaming, permissions, cancel), AND we have at least one concrete next feature that would benefit from a hook (Buddy observe, auto-archive, post-turn telemetry — any one of them).
+
+---
+
+## Buddy integration (virtual-pet MCP companion)
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Started a partial integration (settings keys, IPC handlers, mcpServers wiring, install module) and rolled it back — touched too many trust-boundary surfaces (settings whitelist, mcpServers config in `agent:query`, a new `child_process.execFile` that pipes a remote shell script) for one sitting. Risk of breaking core chat flow > delight upside. Punting until we want to make a focused investment.
+
+**Source:** https://github.com/fiorastudio/buddy — MIT, MCP server over stdio, local SQLite at `~/.buddy/buddy.db`, no network. 12 tools (`buddy_hatch`, `buddy_observe`, `buddy_pet`, `buddy_share`, etc.).
+
+**The win:** Pet that levels up from the agent's observed work. Reduces the "sterile dev tool" feel that scared non-technical users off the TUI. Local-only, so no Portkey / IT compliance implications. Off by default = zero risk for users who'd find it annoying.
+
+**Design (when we come back):**
+- `appSettings.buddyEnabled` + `buddyHatched` flags (whitelist them in `WRITABLE`).
+- New `src/main/buddy.ts`: `status()`, `install()`, `mcpServerConfig()`. Install runs `bash -c 'curl -fsSL .../install.sh | bash'` behind a user-confirmation prompt — bundle the script offline if we want to skip the curl.
+- `agent:query` adds `mcpServers: { buddy: { type: 'stdio', command: 'node', args: [installedPath] } }` when enabled and the binary exists. Buddy's tools then flow through the existing `canUseTool` permission UI for free.
+- Auto-observe: after each `agent:done`, main calls `buddy_observe` with a one-line summary of what the agent did.
+- First-run: after persona wizard, "Want a buddy?" screen → install + hatch.
+- Hatch overlay: full-screen cinematic — egg wobble → hairline cracks → light burst → reveal. Pure CSS.
+- Settings → new "Companion" tab: enable/disable, show pet status from `buddy://status` MCP resource, mute/unmute, forget.
+- Optional: render `buddy_share` PNG output as a custom `Block` type per the CLAUDE.md recipe.
+
+**What you'd feel:**
+- ~3-4 hours of focused work + meaningful QA pass (the `child_process` install path needs sandbox + error states tested).
+- Token cost of `buddy_observe` (~1,350 cached + 150-1,600 per call) shows in the context meter — surface in the toggle copy.
+- Buddy writes outside our userData dir (`~/.buddy/buddy.db`); uninstall doesn't auto-clean.
+
+**Pre-req to revisit:** core chat flow rock-solid (no recent regressions), and a focused half-day window where breaking the agent loop is acceptable.
+
+---
+
 ## Persistence: drop our `conversations.json` bubbles, parse from SDK JSONL
 
 **Filed:** 2026-05-09

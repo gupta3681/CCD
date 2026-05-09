@@ -6,7 +6,11 @@ import { ArrowIcon, SparkIcon } from './Icons'
 
 interface Props {
   bubble: Bubble
-  onPermissionDecision?: (requestId: string, allow: boolean) => void
+  onPermissionDecision?: (
+    requestId: string,
+    allow: boolean,
+    opts?: { allowPattern?: string }
+  ) => void
 }
 
 function blocksOf(b: Bubble): Block[] {
@@ -160,22 +164,248 @@ function ToolResultBlock({ text, isError }: { text: string; isError: boolean }):
   )
 }
 
-function ToolUseBlock({ name, input }: { name: string; input: unknown }): React.JSX.Element {
-  const summary = (() => {
-    try {
-      const s = JSON.stringify(input)
-      return s.length > 80 ? `${s.slice(0, 77)}…` : s
-    } catch {
-      return ''
+// ─────────────────────────────────────────────────────────────────────────
+// Compact tool-call summary. One line per call: [verb] [target] [stats] ›
+// Click to expand the raw input. Designed to read like a build log, not a
+// JSON dump — this is what scrolls past the user during a long agent loop.
+// ─────────────────────────────────────────────────────────────────────────
+
+function basename(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i === -1 ? p : p.slice(i + 1)
+}
+
+function lineCount(s: string | undefined): number {
+  if (!s) return 0
+  const trimmed = s.replace(/\n+$/, '')
+  if (!trimmed) return 0
+  return trimmed.split('\n').length
+}
+
+interface ToolSummary {
+  verb: string
+  target: string
+  stats?: string
+}
+
+/**
+ * Maps a tool call into a human-friendly one-liner. Best-effort — falls back
+ * to the tool name if the input shape is unexpected.
+ */
+function summarizeToolCall(name: string, input: unknown): ToolSummary {
+  const i = (input ?? {}) as Record<string, unknown>
+  const fp = typeof i.file_path === 'string' ? i.file_path : undefined
+  const path = typeof i.path === 'string' ? i.path : undefined
+
+  switch (name) {
+    case 'Read':
+      return { verb: 'Read', target: fp ? basename(fp) : 'file' }
+    case 'Write':
+      return { verb: 'Wrote', target: fp ? basename(fp) : 'file' }
+    case 'Edit':
+    case 'NotebookEdit': {
+      const added = lineCount(i.new_string as string | undefined)
+      const removed = lineCount(i.old_string as string | undefined)
+      return {
+        verb: 'Edited',
+        target: fp ? basename(fp) : 'file',
+        stats: `+${added} -${removed}`
+      }
     }
-  })()
+    case 'Bash': {
+      const desc = typeof i.description === 'string' ? i.description : undefined
+      const cmd = typeof i.command === 'string' ? i.command : ''
+      const target = desc || (cmd.length > 60 ? `${cmd.slice(0, 57)}…` : cmd) || 'command'
+      return { verb: 'Ran', target }
+    }
+    case 'Glob':
+      return { verb: 'Searched', target: typeof i.pattern === 'string' ? i.pattern : 'files' }
+    case 'Grep': {
+      const q = typeof i.pattern === 'string' ? `"${i.pattern}"` : 'pattern'
+      const where = path ? ` in ${basename(path)}` : ''
+      return { verb: 'Searched', target: `${q}${where}` }
+    }
+    case 'WebFetch':
+      return { verb: 'Fetched', target: typeof i.url === 'string' ? new URL(i.url).hostname : 'url' }
+    case 'WebSearch':
+      return { verb: 'Searched web', target: typeof i.query === 'string' ? `"${i.query}"` : '' }
+    case 'TodoWrite':
+      return { verb: 'Updated', target: 'todo list' }
+    case 'Task': {
+      const desc = typeof i.description === 'string' ? i.description : 'subtask'
+      return { verb: 'Spawned', target: desc }
+    }
+    case 'AskUserQuestion':
+      return { verb: 'Asked', target: 'a question' }
+    default:
+      return { verb: 'Ran', target: name }
+  }
+}
+
+function ToolUseBlock({ name, input }: { name: string; input: unknown }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const { verb, target, stats } = summarizeToolCall(name, input)
   return (
-    <div className="flex items-center gap-2 rounded-[6px] bg-vellum/60 px-2.5 py-1 text-[12px] text-graphite">
-      <ArrowIcon />
-      <span className="font-medium">{name}</span>
-      {summary && <span className="text-stone">{summary}</span>}
+    <div className="rounded-[6px] bg-vellum/60">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-2.5 py-1 text-left text-[12px] text-graphite hover:text-ink"
+      >
+        <span className="text-graphite">{verb}</span>
+        <span className="font-mono text-ink">{target}</span>
+        {stats && (
+          <span className="font-mono text-stone">
+            {stats.split(' ').map((part, i) => {
+              const tone = part.startsWith('+')
+                ? 'text-[#4a8a5e]'
+                : part.startsWith('-')
+                  ? 'text-terra'
+                  : 'text-stone'
+              return (
+                <span key={i} className={tone}>
+                  {i > 0 ? ' ' : ''}
+                  {part}
+                </span>
+              )
+            })}
+          </span>
+        )}
+        <span className={`ml-auto text-stone transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+      </button>
+      {open && (
+        <div className="mx-2 mb-2">
+          <ToolDetail name={name} input={input} />
+        </div>
+      )}
     </div>
   )
+}
+
+/**
+ * Per-tool expanded detail view. Edit/Write get a real diff or content
+ * preview; everything else falls back to pretty-printed JSON.
+ */
+function ToolDetail({ name, input }: { name: string; input: unknown }): React.JSX.Element {
+  const i = (input ?? {}) as Record<string, unknown>
+
+  if (name === 'Edit' || name === 'NotebookEdit') {
+    const oldStr = typeof i.old_string === 'string' ? i.old_string : ''
+    const newStr = typeof i.new_string === 'string' ? i.new_string : ''
+    return <DiffView oldStr={oldStr} newStr={newStr} />
+  }
+
+  if (name === 'Write') {
+    const content = typeof i.content === 'string' ? i.content : ''
+    return (
+      <pre className="max-h-[300px] overflow-auto rounded-[6px] border border-[#4a8a5e]/25 bg-[#4a8a5e]/5 p-2 text-[11px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
+        {content || '(empty)'}
+      </pre>
+    )
+  }
+
+  if (name === 'Bash') {
+    const cmd = typeof i.command === 'string' ? i.command : ''
+    return (
+      <pre className="max-h-[200px] overflow-auto rounded-[6px] bg-snow p-2 text-[11px] leading-[1.5] text-ink whitespace-pre-wrap break-words">
+        $ {cmd}
+      </pre>
+    )
+  }
+
+  // Fallback: raw JSON.
+  let json = ''
+  try {
+    json = JSON.stringify(input, null, 2)
+  } catch {
+    json = '(unserializable)'
+  }
+  return (
+    <pre className="max-h-[260px] overflow-auto rounded-[6px] bg-snow p-2 text-[11px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
+      {json}
+    </pre>
+  )
+}
+
+/**
+ * Minimal LCS-based unified diff for two strings. Renders removed lines on
+ * red, added lines on green, context lines in graphite. Good enough for the
+ * small edits the agent typically makes — for large multi-hunk diffs we'd
+ * pull in a real diff library, but that's overkill today.
+ */
+function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }): React.JSX.Element {
+  const oldLines = oldStr.split('\n')
+  const newLines = newStr.split('\n')
+  const ops = lcsDiff(oldLines, newLines)
+  return (
+    <div className="max-h-[360px] overflow-auto rounded-[6px] border border-parchment bg-snow font-mono text-[11px] leading-[1.5]">
+      {ops.map((op, i) => {
+        if (op.kind === 'eq') {
+          return (
+            <div key={i} className="flex">
+              <span className="w-5 select-none px-1 text-right text-stone">·</span>
+              <span className="flex-1 whitespace-pre-wrap break-words px-2 text-graphite">{op.text || ' '}</span>
+            </div>
+          )
+        }
+        if (op.kind === 'add') {
+          return (
+            <div key={i} className="flex bg-[#4a8a5e]/10">
+              <span className="w-5 select-none px-1 text-right text-[#4a8a5e]">+</span>
+              <span className="flex-1 whitespace-pre-wrap break-words px-2 text-[#2f6240]">{op.text || ' '}</span>
+            </div>
+          )
+        }
+        return (
+          <div key={i} className="flex bg-terra/10">
+            <span className="w-5 select-none px-1 text-right text-terra">−</span>
+            <span className="flex-1 whitespace-pre-wrap break-words px-2 text-terra">{op.text || ' '}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+type DiffOp = { kind: 'eq' | 'add' | 'del'; text: string }
+
+/** Standard LCS table, then walk back to produce a unified diff. O(n·m) memory. */
+function lcsDiff(a: string[], b: string[]): DiffOp[] {
+  const n = a.length
+  const m = b.length
+  // Use a flat array for the LCS lengths table.
+  const dp = new Int32Array((n + 1) * (m + 1))
+  const w = m + 1
+  for (let x = n - 1; x >= 0; x--) {
+    for (let y = m - 1; y >= 0; y--) {
+      if (a[x] === b[y]) dp[x * w + y] = dp[(x + 1) * w + (y + 1)] + 1
+      else dp[x * w + y] = Math.max(dp[(x + 1) * w + y], dp[x * w + (y + 1)])
+    }
+  }
+  const ops: DiffOp[] = []
+  let x = 0
+  let y = 0
+  while (x < n && y < m) {
+    if (a[x] === b[y]) {
+      ops.push({ kind: 'eq', text: a[x] })
+      x++
+      y++
+    } else if (dp[(x + 1) * w + y] >= dp[x * w + (y + 1)]) {
+      ops.push({ kind: 'del', text: a[x] })
+      x++
+    } else {
+      ops.push({ kind: 'add', text: b[y] })
+      y++
+    }
+  }
+  while (x < n) {
+    ops.push({ kind: 'del', text: a[x] })
+    x++
+  }
+  while (y < m) {
+    ops.push({ kind: 'add', text: b[y] })
+    y++
+  }
+  return ops
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -194,12 +424,18 @@ function PermissionPrompt({
   onDecision
 }: {
   block: Extract<Block, { type: 'permission_request' }>
-  onDecision?: (requestId: string, allow: boolean) => void
+  onDecision?: (
+    requestId: string,
+    allow: boolean,
+    opts?: { allowPattern?: string }
+  ) => void
 }): React.JSX.Element {
+  const [showPatternMenu, setShowPatternMenu] = useState(false)
   const inputJson = JSON.stringify(block.input, null, 2)
   const decided = !!block.decision
   const screening = block.screening
   const styles = screening ? verdictStyle(screening.verdict) : null
+  const suggested = block.suggestedPattern
 
   return (
     <div className="rounded-[12px] border border-onyx/15 bg-snow p-4 shadow-sm">
@@ -242,10 +478,13 @@ function PermissionPrompt({
       {decided ? (
         <div className="mt-3 text-[12px] text-stone">
           {block.decision!.allow ? '✓ Approved' : '✕ Denied'} ·{' '}
+          {block.decision!.allowPattern && (
+            <span className="font-mono text-graphite">{block.decision!.allowPattern} · </span>
+          )}
           {new Date(block.decision!.at).toLocaleTimeString()}
         </div>
       ) : (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             onClick={() => onDecision?.(block.requestId, false)}
             className="rounded-[9.6px] border border-onyx/15 px-3 py-1.5 text-[13px] text-ink hover:bg-vellum"
@@ -256,8 +495,50 @@ function PermissionPrompt({
             onClick={() => onDecision?.(block.requestId, true)}
             className="rounded-[9.6px] bg-ink px-3 py-1.5 text-[13px] font-medium text-snow hover:opacity-90"
           >
-            Approve
+            Approve once
           </button>
+          {suggested && (
+            <div className="relative">
+              <button
+                onClick={() => setShowPatternMenu((v) => !v)}
+                className="flex items-center gap-1.5 rounded-[9.6px] border border-onyx/15 bg-vellum px-3 py-1.5 text-[13px] text-ink hover:border-onyx/30"
+                title="Auto-approve similar calls for the rest of this session"
+              >
+                Allow for session
+                <span className="text-stone">▾</span>
+              </button>
+              {showPatternMenu && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-[280px] rounded-[8px] border border-onyx/15 bg-snow p-2 shadow-lg">
+                  <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-stone">
+                    Pattern to allow
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowPatternMenu(false)
+                      onDecision?.(block.requestId, true, { allowPattern: suggested })
+                    }}
+                    className="block w-full rounded-[6px] px-2 py-1.5 text-left text-[12px] hover:bg-vellum"
+                  >
+                    <div className="font-mono text-ink">{suggested}</div>
+                    <div className="mt-0.5 text-[10.5px] text-dusty">Suggested — generalizes this call</div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPatternMenu(false)
+                      onDecision?.(block.requestId, true, { allowPattern: block.toolName })
+                    }}
+                    className="mt-0.5 block w-full rounded-[6px] px-2 py-1.5 text-left text-[12px] hover:bg-vellum"
+                  >
+                    <div className="font-mono text-ink">{block.toolName}</div>
+                    <div className="mt-0.5 text-[10.5px] text-dusty">All {block.toolName} calls</div>
+                  </button>
+                  <div className="mt-1 border-t border-parchment px-2 pt-1.5 text-[10.5px] text-dusty">
+                    Cleared when you start a new session.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

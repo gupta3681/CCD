@@ -12,7 +12,9 @@ export type Block =
       toolName: string
       input: Record<string, unknown>
       screening: Screening | null
-      decision: { allow: boolean; at: number } | null
+      /** Pattern the user'd allow if they pick "Allow for session" — derived in main. */
+      suggestedPattern?: string
+      decision: { allow: boolean; at: number; allowPattern?: string } | null
     }
 
 export interface Bubble {
@@ -62,6 +64,12 @@ export interface Conversation {
    * then this flag is cleared.
    */
   lastInterrupted?: boolean
+  /**
+   * Tool-call patterns the user has chosen to auto-approve for THIS session.
+   * Cleared when the user starts a new session. See `permissionPatterns.ts`
+   * for syntax (`Bash(python *)`, `Read(/foo/*)`, bare `Edit`, etc.).
+   */
+  sessionAllowedPatterns?: string[]
 }
 
 export interface SkillSummary {
@@ -122,6 +130,8 @@ export interface PermissionRequest {
   toolName: string
   input: Record<string, unknown>
   screening: Screening | null
+  /** Suggested pattern if the user clicks "Allow for this session". */
+  suggestedPattern?: string
 }
 
 export interface PermissionScreeningStart {

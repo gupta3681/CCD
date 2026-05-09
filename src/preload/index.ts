@@ -43,7 +43,7 @@ const api = {
 
   respondPermission: (
     requestId: string,
-    decision: { allow: boolean; reason?: string }
+    decision: { allow: boolean; reason?: string; allowPattern?: string }
   ): Promise<void> => ipcRenderer.invoke('permission:respond', requestId, decision),
 
   appSettings: {
@@ -54,6 +54,7 @@ const api = {
     ): Promise<AppSettings & { gatewayKeySet: boolean; keyStorage: 'encrypted' | 'plaintext' | 'none' }> =>
       ipcRenderer.invoke('appSettings:set', patch)
   },
+
 
   onPermissionRequest: (cb: (req: PermissionRequest) => void): Disposer => {
     const handler = (_e: unknown, payload: { runId: string; payload: PermissionRequest }): void =>
@@ -127,6 +128,7 @@ const api = {
     },
     profile: {
       isFirstRun: (): Promise<boolean> => ipcRenderer.invoke('settings:profile:isFirstRun'),
+      name: (): Promise<string | null> => ipcRenderer.invoke('settings:profile:name'),
       seed: (input: {
         persona: 'developer' | 'pm' | 'director'
         name: string
@@ -148,7 +150,13 @@ const api = {
     setCwd: (id: string, cwd: string | null): Promise<void> =>
       ipcRenderer.invoke('conversations:setCwd', id, cwd),
     setTrustProject: (id: string, trust: boolean): Promise<void> =>
-      ipcRenderer.invoke('conversations:setTrustProject', id, trust)
+      ipcRenderer.invoke('conversations:setTrustProject', id, trust),
+    getSessionPermissions: (id: string): Promise<string[]> =>
+      ipcRenderer.invoke('conversations:getSessionPermissions', id),
+    revokeSessionPermission: (id: string, pattern: string): Promise<string[]> =>
+      ipcRenderer.invoke('conversations:revokeSessionPermission', id, pattern),
+    clearSessionPermissions: (id: string): Promise<void> =>
+      ipcRenderer.invoke('conversations:clearSessionPermissions', id)
   },
 
   dialog: {

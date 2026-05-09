@@ -8,6 +8,7 @@ import icon from '../../resources/icon.png?asset'
 import * as conversations from './conversations'
 import * as userSettings from './userSettings'
 import * as appSettings from './appSettings'
+import * as permissionPatterns from './permissionPatterns'
 import { screenTool, type Screening } from './screenTool'
 import { log, logBootInfo, recent as recentLogs, clearRing, paths as logPaths } from './logger'
 
@@ -26,8 +27,14 @@ interface ActiveRun {
 const activeRuns = new Map<string, ActiveRun>()
 
 // Pending permission prompts. Resolves when the renderer responds.
+interface PermissionDecision {
+  allow: boolean
+  reason?: string
+  /** When set, the renderer chose "Allow for session" — persist this pattern. */
+  allowPattern?: string
+}
 interface PendingPermission {
-  resolve: (decision: { allow: boolean; reason?: string }) => void
+  resolve: (decision: PermissionDecision) => void
 }
 const pendingPermissions = new Map<string, PendingPermission>()
 
@@ -225,7 +232,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'permission:respond',
-    (_e, requestId: string, decision: { allow: boolean; reason?: string }) => {
+    (_e, requestId: string, decision: PermissionDecision) => {
       const pending = pendingPermissions.get(requestId)
       if (!pending) return
       pending.resolve(decision)
@@ -259,6 +266,7 @@ app.whenReady().then(() => {
   ipcMain.handle('settings:soul:write', (_e, content: string) => userSettings.writeSoul(content))
 
   ipcMain.handle('settings:profile:isFirstRun', () => userSettings.isFirstRun())
+  ipcMain.handle('settings:profile:name', () => userSettings.readProfileName())
   ipcMain.handle(
     'settings:profile:seed',
     (_e, input: { persona: 'developer' | 'pm' | 'director'; name: string; workingOn: string }) =>
@@ -290,6 +298,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle('conversations:setTrustProject', (_e, id: string, trust: boolean) => {
     conversations.setTrustProject(id, !!trust)
+  })
+
+  ipcMain.handle('conversations:getSessionPermissions', (_e, id: string) =>
+    conversations.getSessionAllowedPatterns(id)
+  )
+  ipcMain.handle('conversations:revokeSessionPermission', (_e, id: string, pattern: string) =>
+    conversations.removeSessionAllowedPattern(id, pattern)
+  )
+  ipcMain.handle('conversations:clearSessionPermissions', (_e, id: string) => {
+    conversations.clearSessionAllowedPatterns(id)
   })
 
   // ── Native dialogs / shell ────────────────────────────────────────────
@@ -384,6 +402,16 @@ app.whenReady().then(() => {
               ? {
                   permissionMode: 'default',
                   canUseTool: async (toolName, toolInput, opts) => {
+                    // Per-session allowlist: skip the prompt entirely when a
+                    // pattern the user previously approved matches this call.
+                    const allowed = conversations.getSessionAllowedPatterns(conversationId)
+                    if (permissionPatterns.matchesAny(allowed, toolName, toolInput)) {
+                      log.info('agent', 'auto-approved by session allowlist', {
+                        runId,
+                        toolName
+                      })
+                      return { behavior: 'allow', updatedInput: toolInput }
+                    }
                     const requestId = `${runId}:${crypto.randomUUID()}`
                     let screening: Screening | null = null
                     if (settings.autoScreen) {
@@ -395,13 +423,15 @@ app.whenReady().then(() => {
                         opts.signal
                       )
                     }
+                    const suggestedPattern = permissionPatterns.suggestPattern(toolName, toolInput)
                     send('permission:request', {
                       requestId,
                       toolName,
                       input: toolInput,
-                      screening
+                      screening,
+                      suggestedPattern
                     })
-                    const decision = await new Promise<{ allow: boolean; reason?: string }>(
+                    const decision = await new Promise<PermissionDecision>(
                       (resolve) => {
                         pendingPermissions.set(requestId, { resolve })
                         opts.signal.addEventListener('abort', () => {
@@ -413,6 +443,19 @@ app.whenReady().then(() => {
                       }
                     )
                     if (decision.allow) {
+                      // If the user chose "Allow for session", persist the
+                      // pattern so future matching calls skip the prompt.
+                      if (decision.allowPattern) {
+                        const next = conversations.addSessionAllowedPattern(
+                          conversationId,
+                          decision.allowPattern
+                        )
+                        log.info('agent', 'session allowlist updated', {
+                          runId,
+                          pattern: decision.allowPattern,
+                          total: next.length
+                        })
+                      }
                       return { behavior: 'allow', updatedInput: toolInput }
                     }
                     return {
@@ -426,9 +469,13 @@ app.whenReady().then(() => {
           }
         })
 
-        let messageCount = 0
+        // Counts every SDK protocol message — init, each streaming delta,
+        // tool calls, tool results, the final assistant snapshot, the result.
+        // For a short reply with includePartialMessages: true this is easily
+        // 15–30. It's NOT a count of chat turns or context size.
+        let sdkEvents = 0
         for await (const message of result) {
-          messageCount++
+          sdkEvents++
           if (
             !resumeId &&
             (message as { type?: string }).type === 'system' &&
@@ -439,7 +486,7 @@ app.whenReady().then(() => {
           }
           send('agent:message', message)
         }
-        log.info('agent', 'query completed', { runId, messageCount })
+        log.info('agent', 'query completed', { runId, sdkEvents })
         send('agent:done', null)
       } catch (err) {
         const ar = activeRuns.get(runId)

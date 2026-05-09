@@ -155,6 +155,55 @@ export function setTrustProject(id: string, trust: boolean): void {
   persist()
 }
 
+// ── Per-session permission allowlist ───────────────────────────────────
+// These are tool-call patterns the user has approved for this conversation
+// only. The agent:query handler consults them before opening a permission
+// prompt, auto-approving any matching call.
+
+export function getSessionAllowedPatterns(id: string): string[] {
+  return load()[id]?.sessionAllowedPatterns ?? []
+}
+
+export function addSessionAllowedPattern(id: string, pattern: string): string[] {
+  const store = load()
+  const now = Date.now()
+  const existing = store[id]
+  const current = existing?.sessionAllowedPatterns ?? []
+  // Dedupe — a re-approval of the same pattern shouldn't bloat the list.
+  const next = current.includes(pattern) ? current : [...current, pattern]
+  store[id] = existing
+    ? { ...existing, sessionAllowedPatterns: next, updatedAt: now }
+    : {
+        id,
+        title: 'New chat',
+        createdAt: now,
+        updatedAt: now,
+        sessionId: null,
+        bubbles: [],
+        sessionAllowedPatterns: next
+      }
+  persist()
+  return next
+}
+
+export function removeSessionAllowedPattern(id: string, pattern: string): string[] {
+  const store = load()
+  const existing = store[id]
+  if (!existing) return []
+  const next = (existing.sessionAllowedPatterns ?? []).filter((p) => p !== pattern)
+  store[id] = { ...existing, sessionAllowedPatterns: next, updatedAt: Date.now() }
+  persist()
+  return next
+}
+
+export function clearSessionAllowedPatterns(id: string): void {
+  const store = load()
+  const existing = store[id]
+  if (!existing) return
+  store[id] = { ...existing, sessionAllowedPatterns: [], updatedAt: Date.now() }
+  persist()
+}
+
 function bubbleText(b: Bubble): string {
   if (b.text) return b.text
   if (!b.blocks) return ''

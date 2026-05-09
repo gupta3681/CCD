@@ -66,14 +66,7 @@ export function Sidebar(props: Props): React.JSX.Element {
           <PanelIcon />
         </button>
         <button
-          onClick={onNewSession}
-          title="New session"
-          className="flex h-9 w-9 items-center justify-center rounded-[9.6px] text-graphite hover:bg-parchment/50 [-webkit-app-region:no-drag]"
-        >
-          <PlusIcon />
-        </button>
-        <div className="flex-1" />
-        <button
+          ref={settingsBtnRef}
           onClick={onOpenSettings}
           title="Settings"
           className={`flex h-9 w-9 items-center justify-center rounded-[9.6px] [-webkit-app-region:no-drag] ${
@@ -81,6 +74,13 @@ export function Sidebar(props: Props): React.JSX.Element {
           }`}
         >
           <GearIcon />
+        </button>
+        <button
+          onClick={onNewSession}
+          title="New session"
+          className="flex h-9 w-9 items-center justify-center rounded-[9.6px] text-graphite hover:bg-parchment/50 [-webkit-app-region:no-drag]"
+        >
+          <PlusIcon />
         </button>
       </aside>
     )
@@ -96,13 +96,25 @@ export function Sidebar(props: Props): React.JSX.Element {
         <div className="font-serif text-[15px] font-[400] text-ink [-webkit-app-region:no-drag]">
           Portico
         </div>
-        <button
-          onClick={onToggleCollapsed}
-          title="Collapse sidebar"
-          className="flex h-7 w-7 items-center justify-center rounded-[6px] text-graphite hover:bg-parchment/50 [-webkit-app-region:no-drag]"
-        >
-          <PanelIcon />
-        </button>
+        <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
+          <button
+            onClick={onToggleCollapsed}
+            title="Collapse sidebar"
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-graphite hover:bg-parchment/50"
+          >
+            <PanelIcon />
+          </button>
+          <button
+            ref={settingsBtnRef}
+            onClick={onOpenSettings}
+            title="Settings"
+            className={`flex h-7 w-7 items-center justify-center rounded-[6px] ${
+              settingsActive ? 'bg-parchment/60 text-ink' : 'text-graphite hover:bg-parchment/50'
+            }`}
+          >
+            <GearIcon />
+          </button>
+        </div>
       </div>
 
       <button
@@ -159,15 +171,6 @@ export function Sidebar(props: Props): React.JSX.Element {
         })}
       </div>
 
-      <button
-        ref={settingsBtnRef}
-        onClick={onOpenSettings}
-        className={`mx-3 mb-3 mt-2 flex items-center gap-2 rounded-[9.6px] border border-onyx/15 px-3 py-2 text-left text-[13px] text-ink ${
-          settingsActive ? 'bg-parchment/60' : 'bg-snow hover:border-onyx/30'
-        }`}
-      >
-        <GearIcon /> Settings
-      </button>
     </aside>
   )
 }

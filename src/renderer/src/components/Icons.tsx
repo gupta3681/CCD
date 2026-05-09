@@ -18,16 +18,18 @@ export function PanelIcon(): React.JSX.Element {
   )
 }
 
+// Sliders icon — three horizontal "preference" rows with draggable knobs.
+// Reads as "settings / controls" and fits the editorial Vellum aesthetic
+// better than a literal cog.
 export function GearIcon(): React.JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8L3.4 3.4"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
+      <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="10.5" cy="4" r="1.6" fill="currentColor" stroke="var(--color-vellum, #faf9f5)" strokeWidth="1.2" />
+      <circle cx="5.5" cy="8" r="1.6" fill="currentColor" stroke="var(--color-vellum, #faf9f5)" strokeWidth="1.2" />
+      <circle cx="11" cy="12" r="1.6" fill="currentColor" stroke="var(--color-vellum, #faf9f5)" strokeWidth="1.2" />
     </svg>
   )
 }

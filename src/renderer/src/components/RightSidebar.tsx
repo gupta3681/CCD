@@ -10,6 +10,9 @@ interface Props {
   onClearCwd: () => void
   onRevealCwd: () => void
   onToggleTrustProject: (next: boolean) => void
+  /** Tool-call patterns the user has allowed for this session. */
+  sessionPatterns: string[]
+  onRevokeSessionPattern: (pattern: string) => void
   // Forwarded to the <aside> root so the tour can anchor a coachmark.
   rootRef?: React.RefObject<HTMLElement | null>
 }
@@ -31,6 +34,8 @@ export function RightSidebar(props: Props): React.JSX.Element {
     onClearCwd,
     onRevealCwd,
     onToggleTrustProject,
+    sessionPatterns,
+    onRevokeSessionPattern,
     rootRef
   } = props
 
@@ -115,6 +120,35 @@ export function RightSidebar(props: Props): React.JSX.Element {
             </>
           )}
         </Card>
+
+        {sessionPatterns.length > 0 && (
+          <div className="mt-3">
+            <Card title={`Allowed this session · ${sessionPatterns.length}`}>
+              <p className="mb-2 text-[11px] text-dusty">
+                Tools matching these patterns won't ask again until you start a new session.
+              </p>
+              <div className="flex flex-col gap-1">
+                {sessionPatterns.map((p) => (
+                  <div
+                    key={p}
+                    className="group flex items-center gap-2 rounded-[6px] border border-parchment bg-vellum/40 px-2 py-1"
+                  >
+                    <span className="flex-1 truncate font-mono text-[11.5px] text-ink" title={p}>
+                      {p}
+                    </span>
+                    <button
+                      onClick={() => onRevokeSessionPattern(p)}
+                      title="Revoke"
+                      className="text-[11px] text-dusty opacity-0 transition-opacity hover:text-terra group-hover:opacity-100"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
     </aside>
   )

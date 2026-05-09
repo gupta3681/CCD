@@ -113,6 +113,29 @@ export function isFirstRun(): boolean {
   return !existsSync(SOUL_MD)
 }
 
+/**
+ * Best-effort read of the user's display name from CLAUDE.md. We seeded it
+ * via `seedProfile()` as a `- Name: <value>` line under `## About me`. If the
+ * user later edited the file (or never ran the wizard), we fall back to null.
+ */
+export function readProfileName(): string | null {
+  const cm = readClaudeMd()
+  if (!cm.exists) return null
+  // CLAUDE.md may have multiple `## About me` blocks (e.g. from gstack +
+  // multiple wizard runs). Scan ALL `- Name: …` lines and pick the last
+  // non-empty, non-(unspecified) one — that's the most recent declaration.
+  const re = /^[-*]\s*\*{0,2}Name\*{0,2}\s*:\s*(.+?)\s*$/gim
+  let last: string | null = null
+  for (const m of cm.content.matchAll(re)) {
+    const value = m[1].trim()
+    if (!value || value === '(unspecified)') continue
+    last = value
+  }
+  if (!last) return null
+  // First word only — "Aryan Gupta" should still render "Aryan".
+  return last.split(/\s+/)[0]
+}
+
 // ── Skills ─────────────────────────────────────────────────────────────
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/

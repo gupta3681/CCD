@@ -78,6 +78,7 @@ function makePermissionBubble(req: {
   toolName: string
   input: Record<string, unknown>
   screening: import('../../preload').Screening | null
+  suggestedPattern?: string
 }): Bubble {
   return {
     id: `perm-${req.requestId}`,
@@ -89,6 +90,7 @@ function makePermissionBubble(req: {
         toolName: req.toolName,
         input: req.input,
         screening: req.screening,
+        suggestedPattern: req.suggestedPattern,
         decision: null
       }
     ]
@@ -120,6 +122,8 @@ function App(): React.JSX.Element {
   const [trustProject, setTrustProject] = useState<boolean>(false)
   const [contextTokens, setContextTokens] = useState<number | null>(null)
   const [firstRun, setFirstRun] = useState<boolean>(false)
+  const [userName, setUserName] = useState<string | null>(null)
+  const [sessionPatterns, setSessionPatterns] = useState<string[]>([])
   const [tourActive, setTourActive] = useState<boolean>(false)
   const headerGatewayRef = useRef<HTMLDivElement>(null)
   const inputBarRef = useRef<HTMLTextAreaElement>(null)
@@ -204,21 +208,23 @@ function App(): React.JSX.Element {
     })
   }, [])
 
+  // Tour fires once: only after the persona wizard is done, and only if the
+  // user hasn't already seen it. Re-runnable from Settings → Advanced.
+  useEffect(() => {
+    if (tourCompleted()) return undefined
+    // Slight delay so refs have mounted and the persona wizard (if needed)
+    // takes precedence — tour shows after first chat-empty-state render.
+    const t = setTimeout(() => {
+      if (!tourCompleted()) setTourActive(true)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [])
+
   useEffect(() => {
     window.api.gatewayInfo().then(setGateway)
     window.api.settings.profile.isFirstRun().then(setFirstRun)
+    window.api.settings.profile.name().then(setUserName)
     refreshList()
-    // Tour fires once: only after the persona wizard is done, and only if the
-    // user hasn't already seen it. Re-runnable from Settings → Advanced.
-    if (!tourCompleted()) {
-      // Slight delay so refs have mounted and the persona wizard (if needed)
-      // takes precedence — tour shows after first chat-empty-state render.
-      const t = setTimeout(() => {
-        if (!tourCompleted()) setTourActive(true)
-      }, 600)
-      return () => clearTimeout(t)
-    }
-    return undefined
 
     const offMsg = window.api.onMessage((runId, raw) => {
       const msg = raw as SDKMessage
@@ -253,16 +259,52 @@ function App(): React.JSX.Element {
         return
       }
 
-      // Assistant messages duplicate the streamed content (we already built
-      // bubbles from stream_event), so we don't render them. But they DO carry
-      // the canonical usage block — so use them to track context window size.
-      if (msg.type === 'assistant' && msg.message?.usage) {
-        const u = msg.message.usage
-        const inputs =
-          (u.input_tokens ?? 0) +
-          (u.cache_creation_input_tokens ?? 0) +
-          (u.cache_read_input_tokens ?? 0)
-        if (inputs > 0) setContextTokens(inputs)
+      // Assistant messages duplicate the streamed content for text/thinking
+      // (already built from stream_event), but they DO carry:
+      //   1. canonical usage → context-window meter
+      //   2. canonical tool_use.input → backfills the partial input we built
+      //      from input_json_delta events (which we ignore during streaming)
+      if (msg.type === 'assistant') {
+        const u = msg.message?.usage
+        if (u) {
+          const inputs =
+            (u.input_tokens ?? 0) +
+            (u.cache_creation_input_tokens ?? 0) +
+            (u.cache_read_input_tokens ?? 0)
+          if (inputs > 0) setContextTokens(inputs)
+        }
+
+        const messageId = msg.message?.id
+        const content = msg.message?.content
+        if (messageId && Array.isArray(content)) {
+          // Pull tool_use blocks from the canonical message in declaration
+          // order so we can map them onto our bubble's tool_use blocks.
+          const canonicalToolUses = content.filter((c) => c.type === 'tool_use')
+          if (canonicalToolUses.length > 0) {
+            const bubbleId = `${runId}-${messageId}`
+            setBubbles((prev) => {
+              const idx = prev.findIndex((b) => b.id === bubbleId)
+              if (idx === -1) return prev
+              const bubble = prev[idx]
+              const blocks = (bubble.blocks ?? []).slice()
+              let cursor = 0
+              for (let bi = 0; bi < blocks.length; bi++) {
+                const existing = blocks[bi]
+                if (existing.type !== 'tool_use') continue
+                const canonical = canonicalToolUses[cursor++]
+                if (!canonical) break
+                blocks[bi] = {
+                  type: 'tool_use',
+                  name: canonical.name ?? existing.name,
+                  input: canonical.input ?? {}
+                }
+              }
+              const next = prev.slice()
+              next[idx] = { ...bubble, blocks }
+              return next
+            })
+          }
+        }
       }
     })
 
@@ -322,19 +364,32 @@ function App(): React.JSX.Element {
     }
   }, [refreshList, applyStreamEvent])
 
-  async function decidePermission(requestId: string, allow: boolean): Promise<void> {
-    await window.api.respondPermission(requestId, { allow })
+  async function decidePermission(
+    requestId: string,
+    allow: boolean,
+    opts?: { allowPattern?: string }
+  ): Promise<void> {
+    await window.api.respondPermission(requestId, { allow, allowPattern: opts?.allowPattern })
     setBubbles((prev) =>
       prev.map((b) => {
         if (b.role !== 'permission' || !b.blocks) return b
         const blocks = b.blocks.map((blk) =>
           blk.type === 'permission_request' && blk.requestId === requestId
-            ? { ...blk, decision: { allow, at: Date.now() } }
+            ? { ...blk, decision: { allow, at: Date.now(), allowPattern: opts?.allowPattern } }
             : blk
         )
         return { ...b, blocks }
       })
     )
+    if (opts?.allowPattern) {
+      const next = await window.api.conversations.getSessionPermissions(conversationId)
+      setSessionPatterns(next)
+    }
+  }
+
+  async function revokeSessionPattern(pattern: string): Promise<void> {
+    const next = await window.api.conversations.revokeSessionPermission(conversationId, pattern)
+    setSessionPatterns(next)
   }
 
   useEffect(() => {
@@ -397,6 +452,7 @@ function App(): React.JSX.Element {
     setCwd(null)
     setTrustProject(false)
     setContextTokens(null)
+    setSessionPatterns([])
     loadedBubblesRef.current = null
     currentMessageIdRef.current.clear()
   }
@@ -417,6 +473,7 @@ function App(): React.JSX.Element {
     loadedBubblesRef.current = conv.bubbles
     setCwd(conv.cwd ?? null)
     setTrustProject(!!conv.trustProject)
+    setSessionPatterns(conv.sessionAllowedPatterns ?? [])
     // Reset until the next assistant message tells us actual usage.
     setContextTokens(null)
   }
@@ -483,7 +540,7 @@ function App(): React.JSX.Element {
           setView('chat')
         }}
         onDelete={deleteSession}
-        onOpenSettings={() => setView('settings')}
+        onOpenSettings={() => setView((v) => (v === 'settings' ? 'chat' : 'settings'))}
         settingsActive={view === 'settings'}
         newSessionRef={sidebarNewSessionRef}
         settingsBtnRef={sidebarSettingsRef}
@@ -562,17 +619,21 @@ function App(): React.JSX.Element {
             {bubbles.length === 0 && gateway?.configured && !firstRun && (
               <div className="mt-12 text-center">
                 <h1 className="font-serif text-[40px] font-[330] leading-tight text-ink">
-                  What can I help you with?
+                  {greetingFor(userName)}
                 </h1>
                 <p className="mt-3 text-[14px] text-dusty">
-                  Routed through {gateway.gateway}. {cwd ? <>Working in <code className="rounded bg-vellum px-1 text-[12px]">{cwd.split('/').slice(-2).join('/')}</code>.</> : 'No working folder set — pick one in the right panel for file operations.'}
+                  {cwd ? (
+                    <>Working in <code className="rounded bg-vellum px-1 text-[12px]">{cwd.split('/').slice(-2).join('/')}</code>. What's on your mind?</>
+                  ) : (
+                    <>How's it going? Pick a working folder on the right for file ops, or just start chatting.</>
+                  )}
                 </p>
               </div>
             )}
             {bubbles.map((b) => (
               <BubbleView key={b.id} bubble={b} onPermissionDecision={decidePermission} />
             ))}
-            {busy && <div className="text-[12px] text-stone">Working…</div>}
+            {busy && <BusySpinner />}
           </div>
         </div>
 
@@ -623,6 +684,8 @@ function App(): React.JSX.Element {
           onClearCwd={clearCwd}
           onRevealCwd={revealCwd}
           onToggleTrustProject={toggleTrustProject}
+          sessionPatterns={sessionPatterns}
+          onRevokeSessionPattern={revokeSessionPattern}
           rootRef={rightSidebarRef}
         />
       )}
@@ -691,6 +754,73 @@ function ContextMeter({
       </span>
     </span>
   )
+}
+
+// Corporate-speak spinner verbs. Picks one on mount, then rotates every
+// 2.5s while the agent is working. Pure vibes, zero meaning.
+const SPINNER_VERBS = [
+  'Synergizing',
+  'Circling back',
+  'Taking this offline',
+  'Moving the needle',
+  'Boiling the ocean',
+  'Leveraging core competencies',
+  'Aligning stakeholders',
+  'Drilling down',
+  'Pivoting strategically',
+  'Thinking outside the box',
+  'Streamlining the workflow',
+  'Running it up the flagpole',
+  'Touching base',
+  'Peeling back the onion',
+  'Building the plane while flying it',
+  'Putting a pin in it',
+  'Getting all ducks in a row',
+  'Looping in the right people',
+  'Parking lot-ing that thought',
+  'Eating our own dog food',
+  'Rightsizing the solution',
+  'Double-clicking on that',
+  'Socializing the idea',
+  'Opening the kimono',
+  'Moving the goalposts',
+  'Picking the low-hanging fruit',
+  'Shifting the paradigm',
+  'Creating a win-win',
+  'Increasing bandwidth',
+  'Cascading the information',
+  'Onboarding the deliverables',
+  'Optimizing the pipeline',
+  'Benchmarking best practices',
+  'Ideating at scale',
+  'Actioning the takeaways'
+]
+
+function BusySpinner(): React.JSX.Element {
+  const [verb, setVerb] = useState(() => SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)])
+  useEffect(() => {
+    const id = setInterval(() => {
+      setVerb((prev) => {
+        // Avoid showing the same verb twice in a row.
+        let next = prev
+        while (next === prev) next = SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)]
+        return next
+      })
+    }, 2500)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <div className="flex items-center gap-2 text-[12px] text-stone">
+      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone" />
+      <span>{verb}…</span>
+    </div>
+  )
+}
+
+function greetingFor(name: string | null): string {
+  const h = new Date().getHours()
+  const slot = h < 5 ? 'Burning the midnight oil' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Up late'
+  return name ? `${slot}, ${name}.` : `${slot}.`
 }
 
 function formatTokens(n: number): string {
