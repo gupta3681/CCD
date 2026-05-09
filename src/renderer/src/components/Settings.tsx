@@ -20,7 +20,7 @@ export function Settings({
   }, [])
 
   return (
-    <div className="flex flex-1 flex-col bg-vellum">
+    <div className="flex flex-1 min-w-0 flex-col bg-vellum">
       <header className="flex items-center justify-between border-b border-parchment px-6 py-3 [-webkit-app-region:drag]">
         <div className="flex items-baseline gap-3 [-webkit-app-region:no-drag]">
           <span className="font-serif text-[18px] font-[330] text-ink">Settings</span>
@@ -44,7 +44,7 @@ export function Settings({
           <TabBtn active={tab === 'advanced'} onClick={() => setTab('advanced')} label="Advanced" hint="Logs · diagnostics" />
         </nav>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
           {tab === 'gateway' && <GatewayTab />}
           {tab === 'permissions' && <PermissionsTab />}
           {tab === 'memory' && <MemoryTab />}
@@ -726,7 +726,7 @@ function AdvancedTab({ onRerunTour }: { onRerunTour: () => void }): React.JSX.El
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-parchment px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="text-[13px] text-ink">Diagnostics</div>
