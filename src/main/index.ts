@@ -13,11 +13,15 @@ import { log, logBootInfo, recent as recentLogs, clearRing, paths as logPaths } 
 
 loadDotenv()
 
-// runId -> { controller, conversationId } so cancel can mark the right
-// conversation as interrupted.
+// runId -> { controller, conversationId, sender, cancelHandled } so cancel can
+// mark the right conversation as interrupted AND send unstick events directly
+// to the renderer without waiting for the SDK to actually exit (it sometimes
+// doesn't honor abort if it's blocked inside a tool call).
 interface ActiveRun {
   controller: AbortController
   conversationId: string
+  sender: Electron.WebContents
+  cancelHandled: boolean
 }
 const activeRuns = new Map<string, ActiveRun>()
 
@@ -192,15 +196,30 @@ app.whenReady().then(() => {
 
   ipcMain.handle('agent:cancel', (_e, runId: string) => {
     const ar = activeRuns.get(runId)
-    if (!ar) return
+    if (!ar) {
+      log.warn('agent', 'cancel for unknown runId — already finished?', { runId })
+      return
+    }
+    log.info('agent', 'cancel requested', { runId })
+    ar.cancelHandled = true
     ar.controller.abort()
-    activeRuns.delete(runId)
     conversations.setInterrupted(ar.conversationId, true)
+    let pendingDenied = 0
     for (const [reqId, p] of pendingPermissions) {
       if (reqId.startsWith(`${runId}:`)) {
         p.resolve({ allow: false, reason: 'cancelled' })
         pendingPermissions.delete(reqId)
+        pendingDenied++
       }
+    }
+    if (pendingDenied > 0) log.info('agent', `cancel denied ${pendingDenied} pending permission(s)`, { runId })
+    // Unstick the renderer immediately. The SDK may still be mid-tool-call
+    // and not honor abort right away — that's its problem to clean up. The
+    // UI doesn't have to wait. The agent:query catch block sees cancelHandled
+    // and won't double-send.
+    if (!ar.sender.isDestroyed()) {
+      ar.sender.send('agent:cancelled', { runId, payload: null })
+      ar.sender.send('agent:done', { runId, payload: null })
     }
   })
 
@@ -340,7 +359,7 @@ app.whenReady().then(() => {
         ? ['user', 'project']
         : ['user']
       const controller = new AbortController()
-      activeRuns.set(runId, { controller, conversationId })
+      activeRuns.set(runId, { controller, conversationId, sender, cancelHandled: false })
 
       const settings = appSettings.get()
       const askMode = settings.permissionMode === 'ask'
@@ -420,10 +439,15 @@ app.whenReady().then(() => {
         }
         send('agent:done', null)
       } catch (err) {
-        if (controller.signal.aborted) {
-          log.info('agent', 'query cancelled by user', { runId })
+        const ar = activeRuns.get(runId)
+        if (ar?.cancelHandled) {
+          // The cancel handler already sent agent:cancelled + agent:done.
+          // Don't double-fire; just log that the SDK eventually exited.
+          log.info('agent', 'SDK exited after cancel', { runId })
+        } else if (controller.signal.aborted) {
+          log.info('agent', 'query cancelled (SDK self-aborted)', { runId })
           send('agent:cancelled', null)
-          send('agent:done', null) // user-initiated stop, not a real error
+          send('agent:done', null)
         } else {
           const error =
             err instanceof Error
