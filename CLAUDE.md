@@ -1,10 +1,26 @@
 # CLAUDE.md — Portico
 
-This file is read at the start of every Claude session in this repo. Keep it tight; if you grow it past a screenful, move detail into a sibling doc and link from here. Detailed architecture diagram + animations: [docs/architecture.html](docs/architecture.html).
+This file is read at the start of every Claude session in this repo. Keep it tight; if you grow it past a screenful, move detail into a sibling doc and link from here.
+
+**Companion docs (HTML, open in browser):**
+- [docs/architecture.html](docs/architecture.html) — *how it works*: line-by-line tour, three processes, animated diagrams.
+- [docs/flows.html](docs/flows.html) — *what happens when*: permission decision, prompt assembly, answer streaming, hook surfaces.
+- [docs/code-map.html](docs/code-map.html) — *where everything lives*: file-by-file walk + searchable "where do I change X?" lookup.
 
 ## What this is
 
-**Portico** is a desktop GUI for the Claude Agent SDK that ships through Portkey at the org. Mac + Windows. Single-developer V1. Repo dir is `CCD` (legacy from "Claude Code Desktop"); the user-visible product name is **Portico**.
+**Portico is a desktop harness for the Claude Agent SDK.** A "harness" wraps a raw capability (the agent) with controlled mediation between human and agent. Portico's job — the entire job — is to mediate four things:
+
+1. **What the agent sees** → system prompt assembly, soul.md, CLAUDE.md, settingSources, cwd
+2. **What the agent can do** → tool allowlist, per-session permission patterns, autoScreen, plan mode (future), trust toggle
+3. **When it can act** → user-triggered today; heartbeat / routines (future)
+4. **How the human stays in the loop** → bubbles, diff view, permission modals, AskUserQuestion modal, stop button, model picker
+
+Ships through Portkey at the org. Mac + Windows. Single-developer V1. Repo dir is `CCD` (legacy from "Claude Code Desktop"); the user-visible product name is **Portico**.
+
+**Why the framing matters:** every feature on the roadmap is a harness feature. We are NOT building "AI chat features" — we're widening the contract between the human and the agent. This decides what to prioritize: a feature that strengthens mediation (heartbeat, plan mode, hooks, @filename, scoped permissions) is core; a feature that's just modality or polish (image paste, slash launcher, mascot) is nice-to-have. Ship the trustworthy harness first.
+
+Competitors are other harnesses (Claude Code Desktop, Cursor, Cowork, Cline, Aider, Continue). NOT claude.ai (chatbot UI) and NOT the Agent SDK itself (the engine). Differentiation is "non-engineers at orgs routed through their gateway, with a clean trust model and fewer terminal-shaped affordances."
 
 > **Branding rule (do not break):** Anthropic's Agent SDK terms forbid the names "Claude Code" and "Claude Code Agent" for downstream products. Use **"Portico — Powered by Claude"** in any user-visible string (window title, README, marketing). Internal slugs like `CCD`, `com.portico.app`, package name `portico` are fine.
 
@@ -140,7 +156,21 @@ Naming: `namespace:verb` (e.g. `conversations:list`, `agent:cancel`).
 3. Document in this file's env table AND `.env.example`.
 
 ### A new model
-Update the table in `.env.example` and the cheatsheet below. Don't change `DEFAULT_MODEL` unless Sonnet 4.6 is no longer current — that affects every install with no override.
+Add a `ModelOption` to `KNOWN_MODELS` in `src/shared/types.ts` (single source of truth — picker UI, default dropdown, gateway badge, context meter all read from here). Update the table in `.env.example` if it's a new alias. Don't change `DEFAULT_MODEL` in `main/index.ts` unless Sonnet 4.6 is no longer current — that affects every install with no override.
+
+### A new harness mediation point (the right way to think about features)
+Almost every Portico feature lives at one of four mediation surfaces. Pick the right one and the implementation almost writes itself:
+
+| Surface | What it controls | Today's code paths | Examples of features that live here |
+|---|---|---|---|
+| **What the agent sees** | systemPrompt, settingSources, cwd, prepended user-prompt notes | `systemPromptFor()`, `buildAppend()`, the `effectivePrompt` assembly | @filename mention, soul.md, project trust, "interrupted" note |
+| **What the agent can do** | tool allowlist, canUseTool, mcpServers, permissionMode | `canUseTool` callback, `permissionPatterns.ts`, `screenTool.ts` | per-session allowlist, plan mode, autoScreen, AskUserQuestion modal |
+| **When it acts** | who triggers a turn (user vs. timer vs. external event) | `agent:query` IPC handler is the only trigger today | heartbeat, routines, /loop, phone-remote (BACKLOG) |
+| **How the human stays in the loop** | bubbles, modals, badges, observable state | `BubbleView.tsx`, `PermissionPrompt`, `UserQuestionModal`, header badges, logs | diff view, context meter, model picker, stop button, OS notifications |
+
+Before adding anything, ask: "Which surface? Does it strengthen mediation or is it just polish?" Mediation features take priority over polish for the post-v1 queue.
+
+See [docs/flows.html](docs/flows.html) for animated walkthroughs of each surface and where future hooks would slot in.
 
 ### A new test
 Tests live in `tests/`. Pattern: dynamic `await import(...)` inside each `it()` to avoid module-scope state leaking between tests. The setup at `tests/setup.ts` mocks `electron` and gives each test a fresh `userData` + `HOME` temp dir.

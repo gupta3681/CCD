@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portico — Flows & Hooks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --vellum: #faf9f5;
+    --ink: #141413;
+    --onyx: #1f1e1d;
+    --graphite: #3d3d3a;
+    --dusty: #73726c;
+    --stone: #9c9a92;
+    --parchment: #dedcd1;
+    --snow: #ffffff;
+    --azure: #ccdbe8;
+    --azure-dark: #8aa3b4;
+    --terra: #d97757;
+    --green: #4a8a5e;
+    --amber: #b89456;
+
+    --serif: 'Lora', ui-serif, Georgia, serif;
+    --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--vellum);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+
+  header.site {
+    border-bottom: 1px solid var(--parchment);
+    padding: 18px 0;
+    background-color: rgba(250, 249, 245, 0.85);
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(6px);
+  }
+  header.site .row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+  .logo { font-family: var(--serif); font-size: 20px; font-weight: 400; }
+  .crumbs { font-size: 12px; color: var(--dusty); }
+  nav.toc { display: flex; gap: 18px; font-size: 12px; flex-wrap: wrap; }
+  nav.toc a { color: var(--graphite); text-decoration: none; }
+  nav.toc a:hover { color: var(--ink); }
+
+  main { padding: 60px 0 120px; }
+  section { margin: 88px 0; scroll-margin-top: 80px; }
+  section.hero { margin-top: 32px; }
+
+  h1.display {
+    font-family: var(--serif); font-weight: 400;
+    font-size: 52px; line-height: 1.05; letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  h2.section-title {
+    font-family: var(--serif); font-weight: 400;
+    font-size: 32px; line-height: 1.15; margin-bottom: 12px;
+  }
+  h3 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: 19px; line-height: 1.3; margin: 28px 0 8px;
+  }
+  .lede { font-size: 17px; color: var(--graphite); max-width: 720px; margin-bottom: 28px; }
+  p { margin-bottom: 14px; max-width: 720px; }
+  p.note { color: var(--dusty); font-size: 13.5px; }
+
+  code {
+    font-family: var(--mono); font-size: 13px;
+    background: var(--snow); border: 1px solid var(--parchment);
+    border-radius: 4px; padding: 1px 6px;
+  }
+  .file { color: var(--graphite); }
+
+  /* ─────────────── Flow viz primitives ─────────────── */
+
+  .flow {
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 14px;
+    padding: 28px;
+    margin: 24px 0 32px;
+  }
+  .flow-title {
+    font-size: 12px; color: var(--dusty);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 18px;
+  }
+
+  /* Each step: a small card with a colored stripe and numbered chip */
+  .steps {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .step {
+    display: flex; gap: 14px; align-items: stretch;
+    border: 1px solid var(--parchment);
+    background: var(--vellum);
+    border-radius: 10px;
+    padding: 12px 14px 12px 0;
+    position: relative;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .step .stripe {
+    width: 4px;
+    border-radius: 4px 0 0 4px;
+    flex-shrink: 0;
+  }
+  .step .num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--snow);
+    flex-shrink: 0;
+    margin: 2px 0 0 8px;
+  }
+  .step .body { flex: 1; min-width: 0; padding-left: 6px; }
+  .step .title {
+    font-size: 14.5px; font-weight: 500; color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .step .desc { font-size: 13px; color: var(--graphite); }
+  .step .where {
+    display: inline-block;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--dusty);
+    margin-top: 6px;
+  }
+  .step .where::before { content: '↳ '; opacity: 0.5; }
+  .step:hover { border-color: var(--graphite); }
+
+  /* Color tokens for step types */
+  .step.user .stripe, .step.user .num { background: var(--ink); }
+  .step.main .stripe, .step.main .num { background: var(--azure-dark); }
+  .step.sdk .stripe, .step.sdk .num { background: var(--terra); }
+  .step.render .stripe, .step.render .num { background: var(--green); }
+  .step.hook .stripe, .step.hook .num { background: var(--amber); }
+  .step.decide .stripe, .step.decide .num { background: var(--graphite); }
+
+  /* Branch indicator */
+  .branch {
+    display: flex; gap: 12px; margin-left: 30px; margin-top: -2px;
+  }
+  .branch::before {
+    content: ''; display: block;
+    width: 14px;
+    border-left: 1.5px solid var(--parchment);
+    border-bottom: 1.5px solid var(--parchment);
+    border-radius: 0 0 0 6px;
+    align-self: stretch;
+    margin-top: -10px;
+  }
+  .branch .step { flex: 1; }
+
+  /* Animated arrow between cards */
+  .step::after {
+    content: '';
+    position: absolute;
+    left: 16px; bottom: -8px;
+    width: 1.5px; height: 8px;
+    background: var(--parchment);
+  }
+  .step:last-child::after { display: none; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;
+    font-size: 12px; color: var(--dusty);
+  }
+  .legend .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .legend .swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+
+  /* Big animated playhead — for the first flow only */
+  .play-controls {
+    display: flex; gap: 10px; align-items: center;
+    margin-bottom: 14px;
+    font-size: 12px; color: var(--dusty);
+  }
+  .play-btn {
+    border: 1px solid var(--parchment);
+    background: var(--snow);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px; color: var(--ink);
+    cursor: pointer;
+    font-family: var(--sans);
+  }
+  .play-btn:hover { border-color: var(--graphite); }
+
+  .step.active {
+    border-color: var(--ink);
+    transform: translateX(4px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .step.dimmed {
+    opacity: 0.45;
+  }
+
+  /* Inline code blocks for showing actual code paths */
+  pre.code {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    background: var(--vellum);
+    border: 1px solid var(--parchment);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 8px 0 14px;
+  }
+  pre.code .k { color: var(--terra); }
+  pre.code .s { color: var(--green); }
+  pre.code .c { color: var(--dusty); font-style: italic; }
+  pre.code .m { color: var(--azure-dark); }
+
+  /* Hook surface diagram */
+  .hook-surface {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0;
+    margin: 24px 0;
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--snow);
+  }
+  .hook-surface .lane {
+    padding: 18px 14px;
+    border-right: 1px solid var(--parchment);
+    background: var(--vellum);
+    font-size: 12px; color: var(--dusty);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .hook-surface .lane:nth-child(2n) {
+    background: var(--snow);
+    border-right: none;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .hook-surface .row {
+    display: contents;
+  }
+  .hook-tag {
+    display: inline-block;
+    font-family: var(--mono); font-size: 11.5px;
+    background: rgba(184, 148, 86, 0.15);
+    color: #6e572f;
+    border: 1px solid rgba(184, 148, 86, 0.4);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 6px;
+  }
+
+  /* The annotated diagram (for system prompt) */
+  .layered {
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    background: var(--snow);
+    padding: 0;
+    margin: 16px 0 24px;
+    overflow: hidden;
+  }
+  .layered .layer {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--parchment);
+    display: grid;
+    grid-template-columns: 200px 1fr 220px;
+    gap: 18px;
+    align-items: center;
+    transition: background 0.25s;
+  }
+  .layered .layer:hover { background: var(--vellum); }
+  .layered .layer:last-child { border-bottom: none; }
+  .layered .layer .what {
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink);
+  }
+  .layered .layer .desc { font-size: 13px; color: var(--graphite); }
+  .layered .layer .where { font-family: var(--mono); font-size: 11.5px; color: var(--dusty); }
+
+  /* Pulsing dot */
+  .pulse {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--terra);
+    margin-right: 6px;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.4); opacity: 1; }
+  }
+
+  /* Reveal animation for sections */
+  section { opacity: 0; transform: translateY(8px); transition: opacity 0.5s, transform 0.5s; }
+  section.in-view { opacity: 1; transform: translateY(0); }
+  section.hero { opacity: 1; transform: none; }
+
+  /* Sequence diagram (vertical lanes) */
+  .lanes {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 0;
+    margin: 24px 0;
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .lanes .col {
+    border-right: 1px solid var(--parchment);
+    padding: 14px 14px;
+    min-height: 320px;
+    position: relative;
+  }
+  .lanes .col:last-child { border-right: none; }
+  .lanes .col h4 {
+    font-family: var(--sans); font-weight: 500; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--dusty);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--parchment);
+  }
+  .lanes .col .event {
+    background: var(--vellum);
+    border: 1px solid var(--parchment);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px; color: var(--ink);
+    margin-bottom: 8px;
+    font-family: var(--mono);
+  }
+  .lanes .col .event.muted { color: var(--dusty); border-style: dashed; }
+
+  /* Footer */
+  footer.site {
+    border-top: 1px solid var(--parchment);
+    padding: 32px 0;
+    color: var(--dusty);
+    font-size: 12.5px;
+  }
+  footer.site .row { display: flex; justify-content: space-between; gap: 12px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="container row">
+    <div>
+      <span class="logo">Portico</span>
+      <span class="crumbs">  ·  Flows &amp; Hooks</span>
+    </div>
+    <nav class="toc">
+      <a href="#permission">Permissions</a>
+      <a href="#prompt">Prompt</a>
+      <a href="#answer">Answer</a>
+      <a href="#hooks">Hooks</a>
+      <a href="#bugs">Bug review</a>
+      <a href="#compart">Compartmentalize</a>
+      <a href="code-map.html">Code map</a>
+      <a href="architecture.html">← Architecture</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+<!-- ─────────────────────────── HERO ─────────────────────────── -->
+<section class="hero">
+  <h1 class="display">Flows &amp; hooks</h1>
+  <p class="lede">
+    Portico is a <strong>harness</strong> — it wraps the Claude Agent SDK with controlled mediation
+    between the human and the agent. This doc walks the four mediation surfaces:
+    what the agent sees (system prompt), what it can do (permissions), how the answer comes back,
+    and where future hooks would slot in.
+  </p>
+  <p class="note">
+    Companion to <a class="inline" href="architecture.html">architecture.html</a>. This doc is about <em>movement</em> —
+    the order of events through the harness. The architecture doc is about <em>placement</em> — what lives where.
+  </p>
+</section>
+
+<!-- ─────────────────────────── PERMISSION FLOW ─────────────────────────── -->
+<section id="permission">
+  <h2 class="section-title">1 — How a permission decision is made</h2>
+  <p class="lede">
+    The agent is about to call a tool (Read, Bash, Edit, …). What happens between
+    "agent says <code>I want to run X</code>" and "X actually runs" or "X is blocked"?
+  </p>
+
+  <div class="legend">
+    <span class="chip"><span class="swatch" style="background: var(--azure-dark)"></span> Main process</span>
+    <span class="chip"><span class="swatch" style="background: var(--green)"></span> Renderer</span>
+    <span class="chip"><span class="swatch" style="background: var(--terra)"></span> Agent SDK</span>
+    <span class="chip"><span class="swatch" style="background: var(--graphite)"></span> Decision point</span>
+    <span class="chip"><span class="swatch" style="background: var(--ink)"></span> User input</span>
+  </div>
+
+  <div class="flow">
+    <div class="play-controls">
+      <button class="play-btn" id="permPlayBtn">▶ Play through the steps</button>
+      <span id="permStepLabel">Step <span data-step>0</span> / 8</span>
+    </div>
+
+    <div class="steps" id="permSteps">
+
+      <div class="step sdk">
+        <div class="stripe"></div>
+        <div class="num">1</div>
+        <div class="body">
+          <div class="title">SDK fires <code>canUseTool(toolName, input, opts)</code></div>
+          <div class="desc">The Agent SDK is about to execute a tool, calls our callback for permission first. Includes <code>opts.signal</code> AbortSignal.</div>
+          <div class="where">node_modules/@anthropic-ai/claude-agent-sdk → main/index.ts agent:query handler</div>
+        </div>
+      </div>
+
+      <div class="step decide">
+        <div class="stripe"></div>
+        <div class="num">2</div>
+        <div class="body">
+          <div class="title">Is this <code>AskUserQuestion</code>?</div>
+          <div class="desc">Special case: bypass the entire permission flow, surface a structured modal instead.</div>
+          <div class="where">main/index.ts canUseTool branch · UserQuestionModal renders in renderer</div>
+        </div>
+      </div>
+
+      <div class="step decide">
+        <div class="stripe"></div>
+        <div class="num">3</div>
+        <div class="body">
+          <div class="title">Does any session-allowed pattern match?</div>
+          <div class="desc">Check <code>conversation.sessionAllowedPatterns[]</code> against this call. <code>Bash(python *)</code> matches <code>Bash</code> with command starting <code>python </code>.</div>
+          <div class="where">main/permissionPatterns.ts matchesAny() · Auto-approve if hit, log it</div>
+        </div>
+      </div>
+
+      <div class="step decide">
+        <div class="stripe"></div>
+        <div class="num">4</div>
+        <div class="body">
+          <div class="title">Is auto-screen on?</div>
+          <div class="desc">If yes, send <code>permission:screening</code> to renderer (placeholder bubble), then call Haiku to classify SAFE / CAUTION / DANGEROUS (~300ms).</div>
+          <div class="where">main/screenTool.ts · Renderer's permission bubble shows "Screening with Haiku…"</div>
+        </div>
+      </div>
+
+      <div class="step main">
+        <div class="stripe"></div>
+        <div class="num">5</div>
+        <div class="body">
+          <div class="title">Suggest a pattern for "Allow for session"</div>
+          <div class="desc"><code>Bash(python *)</code> for Bash, <code>Read(/foo/*)</code> for Read, bare tool name for everything else.</div>
+          <div class="where">main/permissionPatterns.ts suggestPattern()</div>
+        </div>
+      </div>
+
+      <div class="step main">
+        <div class="stripe"></div>
+        <div class="num">6</div>
+        <div class="body">
+          <div class="title">Send <code>permission:request</code> to renderer</div>
+          <div class="desc">Carries: requestId, toolName, input, screening verdict, suggested pattern. Renderer renders the permission card with screening bar + 3 buttons (Deny / Approve once / Allow for session ▾).</div>
+          <div class="where">main/index.ts → preload onPermissionRequest → renderer makePermissionBubble · BubbleView.PermissionPrompt</div>
+        </div>
+      </div>
+
+      <div class="step user">
+        <div class="stripe"></div>
+        <div class="num">7</div>
+        <div class="body">
+          <div class="title">User clicks: Deny / Approve once / Allow for session</div>
+          <div class="desc">If "Allow for session", they pick which pattern (suggested or bare tool). Renderer calls <code>respondPermission(requestId, decision)</code>.</div>
+          <div class="where">renderer App.decidePermission() → preload respondPermission → main pendingPermissions resolver</div>
+        </div>
+      </div>
+
+      <div class="step main">
+        <div class="stripe"></div>
+        <div class="num">8</div>
+        <div class="body">
+          <div class="title">Resolve canUseTool · maybe persist pattern</div>
+          <div class="desc">Allow → <code>{behavior: 'allow', updatedInput}</code>. If allowPattern was set, write to <code>conversations.sessionAllowedPatterns[]</code>. Deny → <code>{behavior: 'deny', message}</code>.</div>
+          <div class="where">main/conversations.ts addSessionAllowedPattern() · awaitPermissionOrAbort() helper</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="note">
+    The dual short-circuits at steps 2 &amp; 3 are deliberate — both skip the entire permission UI.
+    AskUserQuestion gets its own modal (it's not really a permission, it's a structured ask).
+    Allowlist matches mean "user already decided this kind of thing is fine" — no point asking
+    again the same session.
+  </p>
+</section>
+
+<!-- ─────────────────────────── PROMPT ASSEMBLY ─────────────────────────── -->
+<section id="prompt">
+  <h2 class="section-title">2 — How the system prompt is assembled</h2>
+  <p class="lede">
+    Three ways to set it: full env override, a Portkey-friendly plain-text mode, or the default
+    "claude_code preset + Portico append." The append itself is layered. Here's the actual
+    composition order:
+  </p>
+
+  <div class="layered">
+    <div class="layer">
+      <div class="what">PORTICO_SYSTEM_PROMPT</div>
+      <div class="desc">If set, this string is the entire system prompt. Hard override — none of the layers below run.</div>
+      <div class="where">main/index.ts systemPromptFor()</div>
+    </div>
+    <div class="layer">
+      <div class="what">claude_code preset</div>
+      <div class="desc">Default. The full Anthropic-bundled agent preset that gives the model its tool guidance, formatting expectations, etc. Skipped if <code>PORTICO_PLAIN_SYSTEM_PROMPT=1</code>.</div>
+      <div class="where">SDK option <code>systemPrompt: { type: 'preset', preset: 'claude_code', append }</code></div>
+    </div>
+    <div class="layer">
+      <div class="what">PORTICO_APPEND</div>
+      <div class="desc">Identity line: "You are Portico, a desktop assistant…". Sets formatting expectations (markdown, concise, immediate over clarifying).</div>
+      <div class="where">main/index.ts PORTICO_APPEND constant</div>
+    </div>
+    <div class="layer">
+      <div class="what">soul.md (if exists)</div>
+      <div class="desc">The user's response-style rules. Wrapped in "## How to respond". Only included if <code>~/.claude/soul.md</code> exists with non-empty content.</div>
+      <div class="where">main/userSettings.ts readSoul() · main/index.ts buildAppend()</div>
+    </div>
+    <div class="layer">
+      <div class="what">PROFILE_FILES_CODA</div>
+      <div class="desc">Final paragraph telling the agent it can edit ~/.claude/CLAUDE.md and soul.md to keep its context current.</div>
+      <div class="where">main/index.ts PROFILE_FILES_CODA constant</div>
+    </div>
+  </div>
+
+  <h3>Per-turn additions to the user prompt</h3>
+  <p>The system prompt above is fixed for the conversation. The <em>user</em> prompt for each turn is also massaged:</p>
+
+  <div class="flow">
+    <div class="steps">
+      <div class="step user">
+        <div class="stripe"></div>
+        <div class="num">1</div>
+        <div class="body">
+          <div class="title">User types and hits Send</div>
+          <div class="desc">Raw prompt string from the textarea.</div>
+          <div class="where">renderer App.send()</div>
+        </div>
+      </div>
+      <div class="step decide">
+        <div class="stripe"></div>
+        <div class="num">2</div>
+        <div class="body">
+          <div class="title">Was the previous turn interrupted?</div>
+          <div class="desc">If <code>conversation.lastInterrupted === true</code>, prepend a short note so the model knows it was cut off. Then clear the flag.</div>
+          <div class="where">main/index.ts agent:query · conversations.getInterrupted()/setInterrupted()</div>
+        </div>
+      </div>
+      <div class="step main">
+        <div class="stripe"></div>
+        <div class="num">3</div>
+        <div class="body">
+          <div class="title">Resolve cwd, trustProject, settingSources</div>
+          <div class="desc">trustProject true → settingSources is <code>['user', 'project']</code>, otherwise <code>['user']</code>. Project's <code>.claude/</code> is opt-in for prompt-injection safety.</div>
+          <div class="where">main/index.ts agent:query handler</div>
+        </div>
+      </div>
+      <div class="step main">
+        <div class="stripe"></div>
+        <div class="num">4</div>
+        <div class="body">
+          <div class="title">Resolve model — precedence chain</div>
+          <div class="desc">conversation.model > appSettings.defaultModel > PORTICO_MODEL env > <code>claude-sonnet-4-6</code>.</div>
+          <div class="where">main/index.ts modelFor(conversationId)</div>
+        </div>
+      </div>
+      <div class="step sdk">
+        <div class="stripe"></div>
+        <div class="num">5</div>
+        <div class="body">
+          <div class="title">SDK <code>query()</code> with the assembled options</div>
+          <div class="desc">Pass model, systemPrompt, includePartialMessages, abortController, settingSources, toolConfig, canUseTool, optional resume. Returns an async iterator of messages.</div>
+          <div class="where">@anthropic-ai/claude-agent-sdk · query()</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── ANSWER FLOW ─────────────────────────── -->
+<section id="answer">
+  <h2 class="section-title">3 — How the answer comes back</h2>
+  <p class="lede">
+    Streaming. Lots of message types. The renderer assembles them into bubbles indexed by SDK
+    <code>message.id</code> so each agent turn becomes one visual bubble even though tool-use
+    loops produce many turns.
+  </p>
+
+  <div class="lanes">
+    <div class="col">
+      <h4>SDK iterator yields</h4>
+      <div class="event">system: init</div>
+      <div class="event">stream_event: message_start</div>
+      <div class="event">stream_event: content_block_start (text)</div>
+      <div class="event">stream_event: content_block_delta × N</div>
+      <div class="event muted">… more deltas …</div>
+      <div class="event">stream_event: content_block_stop</div>
+      <div class="event">stream_event: content_block_start (tool_use)</div>
+      <div class="event muted">input_json_delta × N (we ignore)</div>
+      <div class="event">stream_event: content_block_stop</div>
+      <div class="event">stream_event: message_stop</div>
+      <div class="event">assistant: { message.content[], usage }</div>
+      <div class="event">user: { tool_result }</div>
+      <div class="event muted">… new turn for tool_use → assistant ↻ …</div>
+      <div class="event">result</div>
+    </div>
+    <div class="col">
+      <h4>Main: agent:query loop</h4>
+      <div class="event">activeRuns.set(runId, {...})</div>
+      <div class="event">setSessionId on first init</div>
+      <div class="event">send('agent:message', message)</div>
+      <div class="event muted">… for each yielded message …</div>
+      <div class="event">send('agent:done', null)</div>
+      <div class="event">activeRuns.delete(runId)</div>
+    </div>
+    <div class="col">
+      <h4>Preload bridge</h4>
+      <div class="event">contextBridge → window.api.onMessage</div>
+      <div class="event muted">forwards each event to renderer</div>
+    </div>
+    <div class="col">
+      <h4>Renderer: applyStreamEvent</h4>
+      <div class="event">message_start → currentMessageIdRef.set</div>
+      <div class="event">content_block_start → blocks[idx] = {type, text:''}</div>
+      <div class="event">content_block_delta (text) → append to text</div>
+      <div class="event">content_block_delta (thinking) → append to thinking</div>
+      <div class="event">tool_result → push 'tool' bubble</div>
+      <div class="event">assistant message → backfill canonical tool inputs</div>
+      <div class="event">assistant.usage → setContextTokens</div>
+      <div class="event">agent:done → setBusy(false)</div>
+    </div>
+  </div>
+
+  <h3>Why we backfill tool inputs from the canonical assistant message</h3>
+  <p>
+    During streaming, tool inputs arrive as <code>input_json_delta</code> events whose
+    <code>partial_json</code> strings concatenate to the full JSON. We
+    <strong>intentionally ignore those deltas</strong> in <code>applyStreamEvent</code> — parsing
+    half-formed JSON every keystroke is fiddly and error-prone. Instead, when the SDK emits the
+    canonical <code>assistant</code> message at end-of-turn (which has the fully-parsed
+    <code>tool_use.input</code>), we walk that <code>content[]</code> array and overwrite the
+    blocks in our bubble. Net effect: a brief moment where the tool row shows
+    <code>Edited file +0 -0</code>, then it snaps to <code>Edited barcelona.txt +12 -3</code>
+    when the turn closes. Tradeoff accepted.
+  </p>
+  <p class="note">See <code class="file">renderer/src/App.tsx applyStreamEvent</code> + the assistant-message handler.</p>
+</section>
+
+<!-- ─────────────────────────── HOOK SURFACES ─────────────────────────── -->
+<section id="hooks">
+  <h2 class="section-title">4 — Where to add hooks</h2>
+  <p class="lede">
+    The current code is direct — no hook system, just inline logic in the <code>agent:query</code>
+    handler. There are five natural seam points where future code (Buddy auto-observe,
+    heartbeat ticks, post-turn telemetry, custom screening) would slot in.
+  </p>
+
+  <div class="hook-surface">
+
+    <div class="lane">When</div>
+    <div class="lane">What you'd do here</div>
+
+    <div class="lane">
+      <span class="hook-tag">preTurn</span>
+      Before <code>query()</code> fires
+    </div>
+    <div class="lane">
+      Modify <code>effectivePrompt</code> (e.g. inject reminders, prepend the interrupt note),
+      modify <code>systemPrompt</code> append, set extra <code>mcpServers</code>, set extra
+      <code>settingSources</code>. Today: only the interrupt-prepend is here, inline.
+    </div>
+
+    <div class="lane">
+      <span class="hook-tag">preToolUse</span>
+      Inside <code>canUseTool</code>, before sending to renderer
+    </div>
+    <div class="lane">
+      Short-circuit allow/deny without a prompt (e.g. policy "never run rm -rf without explicit
+      confirm even if Bash is allowlisted"). Today: only the session allowlist + AskUserQuestion
+      intercept are here.
+    </div>
+
+    <div class="lane">
+      <span class="hook-tag">postToolUse</span>
+      After SDK yields <code>user: {tool_result}</code>
+    </div>
+    <div class="lane">
+      Notification on tool errors, post-tool linter ("you just edited X — also update Y"), per-tool
+      cost accounting, audit trail. Today: nothing here — tool results just get rendered.
+    </div>
+
+    <div class="lane">
+      <span class="hook-tag">postTurn</span>
+      After SDK iterator drains, before <code>agent:done</code>
+    </div>
+    <div class="lane">
+      Buddy <code>buddy_observe</code> call, telemetry, auto-archive idle conversations. Today:
+      nothing — main just sends <code>agent:done</code> and unwinds.
+    </div>
+
+    <div class="lane">
+      <span class="hook-tag">onMessage</span>
+      Inside the streaming for-loop, per yielded message
+    </div>
+    <div class="lane">
+      Custom message-type handlers (the SDK has <code>SDKPermissionDeniedMessage</code>,
+      <code>SDKCompactBoundaryMessage</code>, etc. that we currently pass through to the renderer
+      verbatim). Hook here for first-class handling.
+    </div>
+
+  </div>
+
+  <h3>The shape these hooks should take when extracted</h3>
+  <pre class="code"><span class="c">// proposed: src/main/harness/hooks.ts</span>
+<span class="k">interface</span> <span class="m">TurnContext</span> {
+  runId: <span class="m">string</span>
+  conversationId: <span class="m">string</span>
+  prompt: <span class="m">string</span>
+  systemAppend: <span class="m">string</span>
+  cwd?: <span class="m">string</span>
+  trustProject: <span class="m">boolean</span>
+  model: <span class="m">string</span>
+  mcpServers: <span class="m">Record</span>&lt;<span class="m">string</span>, <span class="m">unknown</span>&gt;
+}
+
+<span class="k">type</span> <span class="m">PreTurnHook</span>     = (ctx: <span class="m">TurnContext</span>) =&gt; <span class="m">Promise</span>&lt;<span class="m">TurnContext</span>&gt;
+<span class="k">type</span> <span class="m">PreToolHook</span>     = (ctx: <span class="m">TurnContext</span>, name: <span class="m">string</span>, input: <span class="m">unknown</span>)
+                          =&gt; <span class="m">Promise</span>&lt;{ allow: <span class="m">boolean</span>, reason?: <span class="m">string</span> } | <span class="m">null</span>&gt;
+<span class="k">type</span> <span class="m">PostToolHook</span>    = (ctx: <span class="m">TurnContext</span>, name: <span class="m">string</span>, input: <span class="m">unknown</span>, result: <span class="m">string</span>)
+                          =&gt; <span class="m">Promise</span>&lt;<span class="m">void</span>&gt;
+<span class="k">type</span> <span class="m">PostTurnHook</span>    = (ctx: <span class="m">TurnContext</span>, summary: { sdkEvents: <span class="m">number</span>, error?: <span class="m">Error</span> })
+                          =&gt; <span class="m">Promise</span>&lt;<span class="m">void</span>&gt;
+
+<span class="k">export const</span> hooks = {
+  preTurn:     [] <span class="k">as</span> <span class="m">PreTurnHook</span>[],
+  preToolUse:  [] <span class="k">as</span> <span class="m">PreToolHook</span>[],
+  postToolUse: [] <span class="k">as</span> <span class="m">PostToolHook</span>[],
+  postTurn:    [] <span class="k">as</span> <span class="m">PostTurnHook</span>[]
+}</pre>
+
+  <p class="note">
+    Backed by the <a class="inline" href="#compart">compartmentalization plan</a> below — extract <code>harness/runner.ts</code>,
+    <code>harness/promptAssembler.ts</code>, and <code>harness/hooks.ts</code>, then everything in
+    <code>index.ts</code> becomes thin IPC dispatch.
+  </p>
+</section>
+
+<!-- ─────────────────────────── BUG REVIEW ─────────────────────────── -->
+<section id="bugs">
+  <h2 class="section-title">Bug review — May 10, 2026</h2>
+  <p class="lede">
+    Walked the recent changes (model picker, AskUserQuestion modal, sessionPermissions, tool
+    result rendering). Two real bugs found and fixed in this pass; three more flagged as
+    pre-existing and noted below.
+  </p>
+
+  <h3>Fixed in this session</h3>
+  <div class="layered">
+    <div class="layer">
+      <div class="what">AbortSignal listener leak</div>
+      <div class="desc">canUseTool added an <code>'abort'</code> listener but never removed it on natural resolve. Long turns with many tool calls accumulated listeners. Fixed via new <code>awaitPermissionOrAbort()</code> helper that single-resolves and removes the listener.</div>
+      <div class="where">main/index.ts (was duplicated in two places)</div>
+    </div>
+    <div class="layer">
+      <div class="what">Silent loss of session_id on init</div>
+      <div class="desc">If the SDK's <code>system:init</code> ever lacked <code>session_id</code>, we silently skipped <code>setSessionId()</code>. The conversation would then run as single-turn-only with no warning. Fixed: <code>log.warn</code> if init has no session_id.</div>
+      <div class="where">main/index.ts agent:query streaming loop</div>
+    </div>
+  </div>
+
+  <h3>Pre-existing — flagged for backlog</h3>
+  <div class="layered">
+    <div class="layer">
+      <div class="what">activeRuns leak on iterator stall</div>
+      <div class="desc">If the SDK's async iterator hangs and never throws, <code>activeRuns.delete(runId)</code> in finally never runs. Long-lived Portico instances accumulate orphaned entries. Mitigation: wrap the for-await with a watchdog timeout, or surface stalls via a heartbeat-like check.</div>
+      <div class="where">main/index.ts agent:query for-await loop</div>
+    </div>
+    <div class="layer">
+      <div class="what">UserQuestionModal selections race</div>
+      <div class="desc">Modal initializes <code>selections</code> from <code>questions</code> length. If <code>questions</code> prop ever changes mid-mount (currently it can't, we set askUserQuestion to null between requests), <code>selections[i]</code> would index out of bounds. Mitigation: <code>key={requestId}</code> on the modal in App.tsx.</div>
+      <div class="where">renderer/src/components/UserQuestionModal.tsx</div>
+    </div>
+    <div class="layer">
+      <div class="what">gatewayInfo IPC fires twice on mount</div>
+      <div class="desc">Both the main IPC-subscriptions effect AND the conversationId-deps effect fetch gateway info. Wasteful but not broken. Mitigation: drop the call from the main effect, let the deps effect own it.</div>
+      <div class="where">renderer/src/App.tsx</div>
+    </div>
+  </div>
+
+  <p class="note">
+    Verified against the actual source (not just LLM hunches). Six items the review agent flagged
+    were not real bugs — defensive-coding misreads. Net: 2 fixed, 3 noted, no surprises.
+  </p>
+</section>
+
+<!-- ─────────────────────────── COMPARTMENTALIZATION ─────────────────────────── -->
+<section id="compart">
+  <h2 class="section-title">Compartmentalization plan</h2>
+  <p class="lede">
+    The codebase is healthy at v1, but two files are doing too much:
+    <code>main/index.ts</code> (~700 lines, 25+ IPC handlers + the harness loop) and
+    <code>renderer/src/App.tsx</code> (~750 lines, all the orchestration). Here's the proposed
+    split when we have a clean half-day. Pure refactor — no behavior change. The new <code>harness/</code>
+    directory makes the framing explicit: the harness IS what Portico ships.
+  </p>
+
+  <div class="layered">
+    <div class="layer">
+      <div class="what">main/harness/runner.ts</div>
+      <div class="desc">The actual SDK <code>query()</code> loop. ~50 lines. Takes a <code>TurnContext</code>, returns nothing (events go via send callback). Replaces the body of <code>agent:query</code>.</div>
+      <div class="where">extract from main/index.ts</div>
+    </div>
+    <div class="layer">
+      <div class="what">main/harness/promptAssembler.ts</div>
+      <div class="desc">Pure functions: <code>buildSystemPrompt()</code>, <code>buildUserPrompt()</code>, <code>resolveModel()</code>, <code>resolveSettingSources()</code>. No side effects, no IPC. Trivially testable.</div>
+      <div class="where">extract from main/index.ts</div>
+    </div>
+    <div class="layer">
+      <div class="what">main/harness/permissionGate.ts</div>
+      <div class="desc">The <code>canUseTool</code> body — currently 100 lines of nested logic. Splits into: <code>handleAskUserQuestion()</code>, <code>checkAllowlist()</code>, <code>screenAndPrompt()</code>.</div>
+      <div class="where">extract from main/index.ts</div>
+    </div>
+    <div class="layer">
+      <div class="what">main/harness/hooks.ts</div>
+      <div class="desc">Hook registry (preTurn / preToolUse / postToolUse / postTurn). Today the inline logic is the "first registered hook" for each point. Future features register additional hooks.</div>
+      <div class="where">new file</div>
+    </div>
+    <div class="layer">
+      <div class="what">main/ipc/conversations.ts</div>
+      <div class="desc">All <code>conversations:*</code> IPC handlers. Just delegates to <code>conversations.ts</code>. ~30 lines, removes IPC noise from <code>index.ts</code>.</div>
+      <div class="where">extract from main/index.ts</div>
+    </div>
+    <div class="layer">
+      <div class="what">main/ipc/settings.ts</div>
+      <div class="desc">All <code>settings:*</code>, <code>appSettings:*</code>, <code>logs:*</code>, <code>buddy:*</code> IPC handlers.</div>
+      <div class="where">extract from main/index.ts</div>
+    </div>
+    <div class="layer">
+      <div class="what">renderer/src/hooks/useStreaming.ts</div>
+      <div class="desc">Custom React hook owning <code>currentMessageIdRef</code>, <code>applyStreamEvent</code>, the assistant-message backfill, and the bubble-state mutations. App.tsx becomes orchestration only.</div>
+      <div class="where">extract from renderer/src/App.tsx</div>
+    </div>
+    <div class="layer">
+      <div class="what">renderer/src/hooks/useConversation.ts</div>
+      <div class="desc">Owns conversationId, bubbles, cwd, trustProject, model, sessionPatterns. Provides <code>newSession</code>, <code>selectSession</code>, <code>setModel</code>, etc. as a single hook.</div>
+      <div class="where">extract from renderer/src/App.tsx</div>
+    </div>
+    <div class="layer">
+      <div class="what">renderer/src/components/Composer.tsx</div>
+      <div class="desc">The textarea + Pet + send button as one component. App.tsx renders <code>&lt;Composer onSend={send} busy={busy} onStop={stop} /&gt;</code>.</div>
+      <div class="where">extract from renderer/src/App.tsx</div>
+    </div>
+  </div>
+
+  <h3>Where new features land after the refactor</h3>
+  <p>
+    The point of this isn't aesthetics — it's that adding features tomorrow has an obvious home.
+  </p>
+  <pre class="code"><span class="c">// Want to add Heartbeat?</span>
+src/main/heartbeat.ts                 <span class="c">// new module — owns the ticker</span>
+src/main/harness/hooks.ts               <span class="c">// register postTurn hook for tick observation</span>
+renderer/src/components/Settings.tsx  <span class="c">// new "Heartbeat" tab</span>
+
+<span class="c">// Want to add Buddy auto-observe?</span>
+src/main/buddy.ts                     <span class="c">// new — wraps the MCP install</span>
+src/main/harness/runner.ts              <span class="c">// add buddy mcpServers to query options</span>
+src/main/harness/hooks.ts               <span class="c">// register postTurn hook calling buddy_observe</span>
+
+<span class="c">// Want to add @filename mention?</span>
+src/main/ipc/mentions.ts              <span class="c">// new IPC: mention:resolve</span>
+renderer/src/components/Composer.tsx  <span class="c">// add chip rendering + autocomplete popover</span>
+
+<span class="c">// Want to add image paste?</span>
+src/shared/types.ts                   <span class="c">// extend Block union with 'image'</span>
+renderer/src/components/Composer.tsx  <span class="c">// onPaste handler, base64 encode</span>
+renderer/src/components/BubbleView.tsx<span class="c">// render image blocks as thumbnail</span>
+src/main/harness/runner.ts              <span class="c">// pass multimodal user message to SDK</span></pre>
+
+  <p class="note">
+    Sequence: do permissionGate + promptAssembler + runner extract first (one PR, no behavior
+    change). Hooks registry second. Renderer hooks third. Each is a clean, reviewable diff.
+    Filed to BACKLOG.md as "Refactor: prompt assembler + turn hooks" already.
+  </p>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="container row">
+    <span>Portico — internal v0.1</span>
+    <span>Companion to <a class="inline" href="architecture.html">architecture.html</a></span>
+  </div>
+</footer>
+
+<script>
+  // ─────────────────── Reveal-on-scroll ───────────────────
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) e.target.classList.add('in-view')
+  }, { threshold: 0.05 })
+  document.querySelectorAll('section').forEach(s => observer.observe(s))
+
+  // ─────────────────── Permission flow playthrough ───────────────────
+  const permSteps = document.querySelectorAll('#permSteps .step')
+  const permStepLabel = document.querySelector('#permStepLabel [data-step]')
+  const permPlayBtn = document.getElementById('permPlayBtn')
+  let playTimer = null
+  let playIdx = 0
+
+  function setStep(i) {
+    permSteps.forEach((s, j) => {
+      s.classList.toggle('active', j === i)
+      s.classList.toggle('dimmed', i >= 0 && j !== i)
+    })
+    permStepLabel.textContent = i + 1
+  }
+
+  function clearStep() {
+    permSteps.forEach(s => {
+      s.classList.remove('active')
+      s.classList.remove('dimmed')
+    })
+    permStepLabel.textContent = '0'
+  }
+
+  function playStep() {
+    if (playIdx >= permSteps.length) {
+      stopPlay()
+      setTimeout(clearStep, 800)
+      return
+    }
+    setStep(playIdx)
+    playIdx++
+    playTimer = setTimeout(playStep, 1400)
+  }
+
+  function startPlay() {
+    playIdx = 0
+    permPlayBtn.textContent = '◼ Stop'
+    playStep()
+  }
+
+  function stopPlay() {
+    clearTimeout(playTimer)
+    playTimer = null
+    permPlayBtn.textContent = '▶ Play through the steps'
+  }
+
+  permPlayBtn.addEventListener('click', () => {
+    if (playTimer) {
+      stopPlay()
+      clearStep()
+    } else {
+      startPlay()
+    }
+  })
+
+  // Hover any step to highlight it (manual exploration)
+  permSteps.forEach((s, i) => {
+    s.addEventListener('mouseenter', () => {
+      if (playTimer) return  // don't fight the playthrough
+      setStep(i)
+    })
+    s.addEventListener('mouseleave', () => {
+      if (playTimer) return
+      clearStep()
+    })
+  })
+</script>
+
+</body>
+</html>

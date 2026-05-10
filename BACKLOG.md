@@ -4,9 +4,174 @@ Things we've decided are worth doing but aren't doing now. Add entries with date
 
 ---
 
-## Refactor: prompt assembler + turn hooks
+## `@filename` to inline file context in prompts
 
 **Filed:** 2026-05-09
+
+**Why now is wrong:** Working today via the agent's Read tool — typing "look at src/main/index.ts" makes the agent call Read, hit the permission prompt, and read it. Adds 3-5s + a permission round-trip per "look at this" prompt. Annoying for power users, but not blocking ship.
+
+**The win:** Type `@src/main/index.ts` in the prompt; it gets expanded to a `<file_path>:\n<contents>` prefix in the user message before send. Skips the tool call entirely. Power-user feature — non-coders won't use it; coders will use it constantly.
+
+**Design:**
+- New `src/renderer/src/components/MentionParser.ts`: extracts `@<path>` tokens from prompt text. Path syntax: relative (resolved against cwd) or absolute. Globs not supported in v1.
+- On send, pre-process: for each `@path`, attempt to read via a new `mention:resolve` IPC handler that goes through `guards.ts.isCwdSafe`-equivalent validation (must be inside cwd, OR `trustProject` && inside trusted folder, OR inside the user's home if no cwd).
+- Failed resolves (not found, denied) drop into a renderer error chip — don't send the prompt, let the user fix the path.
+- Successful resolves: build a multi-block user message — one `text` block per file with `--- file: <path> ---\n<contents>` framing, then the user's prompt as the final text block.
+- Above the textarea, render small chips: `[× src/main/index.ts (3.2KB)]` per detected mention. Click × to revert to plain text.
+- Autocomplete: typing `@` opens a small file-picker popover scoped to cwd. Same fuzzy-search component as the future slash-command launcher (so build that primitive once).
+
+**What you'd feel:**
+- "Explain @src/main/index.ts" sends the file inline; agent answers without a Read call.
+- Cheaper too — no Read tool means no Haiku screening cost.
+- Token cost visible in the context meter as you type — files over 50KB show a yellow warning chip.
+
+**Pre-req to revisit:** none. Self-contained.
+
+---
+
+## Per-conversation model picker
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Works today via `PORTICO_MODEL` env var or Settings → Gateway. Just doesn't surface per-conversation. Everyone pays Sonnet 4.6 rates for "what time is it" prompts.
+
+**The win:** Inline model picker beside the Send button. Sonnet for most work, Haiku for "summarize this", Opus for hard refactors. User picks per conversation, persists across reload.
+
+**Design:**
+- Add `model?: string` field to `Conversation` in `shared/types.ts`.
+- Add `setModel(id, model)` in `conversations.ts` (same upsert pattern as setCwd; bumps `updatedAt` only, NOT `lastMessageAt`).
+- `agent:query` honors per-conversation override before falling back to `modelFor()`.
+- IPC: `conversations:setModel`.
+- UI: small chip-style dropdown left of the Send/Stop button, e.g. `[Sonnet 4.6 ▾]`. Three options: Sonnet 4.6 / Opus 4.7 / Haiku 4.5. Header gateway info still shows the global default; per-conversation override appears as a subtle badge in the header.
+- Cost hint in the dropdown menu: small relative-cost indicator next to each model name (`$$$ Opus`, `$$ Sonnet`, `$ Haiku`).
+
+**What you'd feel:**
+- Cheap prompts get the cheap model. Bills drop.
+- Switching mid-conversation works (next turn uses new model — no SDK trick required, just changes the `model` option).
+
+**Pre-req to revisit:** none.
+
+---
+
+## Image paste / drag-drop in prompts
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Big multimodal lift for a feature that primarily helps non-developers (paste a screenshot of an error, ask "what does this mean"). Engineers would also use it but less often. Worth doing — just not blocking initial ship.
+
+**The win:** Paste a screenshot or drag an image into the textarea. Sent as a multimodal user message. Agent can see it. Sonnet 4.6 already supports image input — no model change needed.
+
+**Design:**
+- Extend `Bubble.blocks` `Block` union with `{ type: 'image'; mimeType: string; dataB64: string; thumbnailUrl?: string }`.
+- Renderer: `onPaste` and `onDrop` handlers on the textarea. Capture `image/*` items, base64-encode, attach as a thumbnail chip above the input (same row as the future @-mention chips).
+- Send path: build user message as a multi-block array — `image` blocks first, then `text` block with the prompt. SDK accepts this as the message content.
+- `BubbleView` renders user bubbles with image blocks as thumbnails (max 320px wide), click to enlarge in a lightbox modal.
+- Persistence: store base64 in conversations.json. Mild bloat — a 1MB screenshot becomes ~1.4MB JSON. v1 acceptable; v2 could move images to a sidecar `images/` dir referenced by hash.
+- Token cost: each image is ~1500 tokens at Sonnet pricing. Surface in context meter on send.
+
+**What you'd feel:**
+- Cmd-V a screenshot in 1 second instead of saving + Reading + asking.
+- "Why is my form broken" + screenshot is suddenly a one-line interaction.
+- Conversations.json grows faster — cap at "biggest single image: 5MB" with a friendly error.
+
+**Pre-req to revisit:** none.
+
+---
+
+## Slash commands (`/`) launcher in prompt
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Skills already work — they load via `~/.claude/skills/<name>/SKILL.md`, the agent picks them up. They're just hard to discover. v1 ships without and most users won't notice; the small group of skill-aware users will.
+
+**The win:** Type `/` in the textarea → popover opens with a fuzzy-searchable list of:
+- Built-in actions (`/clear` clears the conversation, `/cwd` opens folder picker, `/model` opens model picker, `/heartbeat` opens heartbeat config)
+- User skills from `~/.claude/skills/<name>/SKILL.md` with their `description` frontmatter
+- Bundled skills shipped with Portico (none today, hook for later)
+
+Selection inserts the skill's invocation pattern into the prompt OR runs the action immediately for built-ins.
+
+**Design:**
+- New `src/renderer/src/components/SlashLauncher.tsx`: popover anchored above the textarea, fuzzy-search input, keyboard nav (↑↓ to move, ↵ to select, Esc to close).
+- Skill list source: `window.api.settings.skills.list()` (already exists, returns name + path + description).
+- Built-in commands defined in renderer as a static array — each has `{ name, description, run: () => void }`.
+- Trigger: textarea `onKeyDown` — when key is `/` and the cursor is at start-of-line (or after whitespace), open the launcher. Esc closes; selecting closes.
+- Same fuzzy-search primitive as `@filename` autocomplete — build the component once, use twice.
+
+**What you'd feel:**
+- New users discover skills exist (currently invisible).
+- Shorter path to "open settings to clear", "switch folder", etc.
+- No agent round-trip for built-in actions.
+
+**Pre-req to revisit:** the @filename feature (or vice-versa) — share the popover/fuzzy-search component, build either first.
+
+---
+
+## Plan mode (read-only safety mode for big refactors)
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** Useful but not blocking. Ask mode (current default) covers most of the safety case via per-tool approval; users can deny Edit/Write/Bash calls one by one. Plan mode is the convenience version.
+
+**The win:** Third option in the permission picker (next to Ask / Auto): **Plan**. Agent has Read, Glob, Grep, WebFetch, WebSearch, Task — but NOT Edit, Write, NotebookEdit, Bash. Forces the model to map an approach in text rather than start changing things. At the end of plan mode, a single "Execute this plan" button switches to Ask mode and re-sends the plan as the next prompt.
+
+**Design:**
+- Extend `PermissionMode` union to `'auto' | 'ask' | 'plan'`.
+- `agent:query` for plan mode: `permissionMode: 'default'` + `disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'Bash']`. canUseTool callback unchanged for the read-only tools.
+- New "Plan mode" pill in the input bar (or in the gateway header) — toggles per-conversation. State stored in Conversation as `planMode?: boolean`, NOT in appSettings (it's a per-task choice, not a global preference).
+- After 1+ assistant turns in plan mode, render a green "Execute plan" button below the last assistant bubble. Click → flip planMode off, send the plan back as the next user prompt with prefix "Execute this plan:".
+- Settings → Permissions tab gets a third radio for the global default.
+
+**What you'd feel:**
+- Big-refactor safety net. "Refactor my auth" first proposes the plan, you read it, you approve.
+- Reduces "agent did 14 edits I didn't want" footguns for non-engineers.
+
+**Pre-req to revisit:** none.
+
+---
+
+## Heartbeat (scheduled, file-driven background checks)
+
+**Filed:** 2026-05-09
+
+**Why now is wrong:** New trust surface (auto-firing turns), needs careful UX (notifications, idle gating, cost transparency), and the value proposition is clearest for users who have a settled workflow — not the first-week new user. Better to ship after v1 is in users' hands and we hear who actually wants this.
+
+**The win:** Lifted from OpenClaw — periodic ticks where the agent reads a `<cwd>/HEARTBEAT.md` checklist, runs the checks, and either acts or replies the literal `HEARTBEAT_OK` string (which suppresses output). Turns Portico from "chatbot you talk to" into "agent that pings you when something's worth knowing." Use cases: unread urgent items, calendar conflicts, finished background jobs, log errors, TODOs you forgot.
+
+**Design:**
+- New `src/main/heartbeat.ts` — owns one `setInterval` (60s recheck cadence). Started in `app.whenReady()`, stopped on `window-all-closed`.
+- Gate checks per tick: enabled, within active hours, idle threshold elapsed since last user activity, no active run, current conv has cwd + trustProject + non-empty `HEARTBEAT.md`.
+- Synthesized prompt prepends `[Heartbeat tick — scheduled background check, NOT a user message. Run through HEARTBEAT.md and act on anything worth surfacing. If nothing's worth surfacing, reply with EXACTLY the string HEARTBEAT_OK and nothing else — your output will be suppressed.]` then the file contents.
+- New `Bubble.kind?: 'user' | 'heartbeat'` field. Heartbeat bubbles render with a 🫀 label.
+- After streaming completes, if assembled assistant text equals `HEARTBEAT_OK` (trimmed), App.tsx silently removes the bubble and shows a tiny ephemeral footer ("💗 last check at 14:32 · all quiet").
+- OS notifications when app is unfocused and a heartbeat surfaces non-OK reply. Click to focus + select conversation.
+- New "Heartbeat" tab in Settings: master toggle, interval slider, active hours start/end, idle threshold, "Last tick · Next tick" status, "Open HEARTBEAT.md" button (creates from starter template if missing).
+- User-activity tracking: renderer sends `heartbeat:userActivity` IPC (debounced 5s) on textarea keypress, send click, tab focus. Main keeps `lastUserActivityAt`.
+
+**Settings shape:**
+```ts
+interface HeartbeatSettings {
+  enabled: boolean              // default false
+  intervalMinutes: number       // default 30
+  idleThresholdMinutes: number  // default 5
+  activeHours: { start: number; end: number } // 0-23, default 8-22
+}
+```
+
+**Permission flow during heartbeat:** if a tool needs approval and the app is in background, auto-deny after 30s and log it (option a from spec). v2: OS notification asking the user to come review.
+
+**What you'd feel:**
+- ~$0.10–$0.50/day per active conversation (28 ticks/day × Sonnet pricing × tools used). Surface this in Settings copy.
+- Off by default; opt-in via Settings AND requires HEARTBEAT.md to be present (double opt-in).
+- App must be open for ticks to fire (v1 limitation; v2 = launchd/Scheduler tray-mode auto-launch).
+
+**Pre-req to revisit:** core turn loop has been stable for 2+ weeks (no streaming/permission/cancel regressions); first batch of users (Binil cohort) settled into a workflow and at least one of them asks for "I wish Portico would notice X for me."
+
+---
+
+## Refactor: extract `harness/` (prompt assembler + turn hooks)
+
+**Filed:** 2026-05-09 · **Reframed:** 2026-05-10 (Portico is a harness — see CLAUDE.md)
 
 **Why now is wrong:** The current `agent:query` handler does too much in one place — gateway resolution, settings read, conversation lookup, soul.md read, system-prompt assembly, interrupt-note prepend, settingSources decision, mcpServers wiring, canUseTool callback, AbortController bookkeeping, streaming loop, error/cancel triage. ~150 lines of imperative do-everything. Adding a feature today (pre-turn linter, post-turn observer, optional system-prompt addendum, custom logging hook) means surgery in the middle of that handler. The risk is a regression in the streaming + permission flow, which we just stabilized.
 
@@ -25,12 +190,13 @@ Things we've decided are worth doing but aren't doing now. Add entries with date
 **Module layout:**
 ```
 src/main/
-  agent/
-    promptAssembler.ts      # buildSystemPrompt, buildUserPrompt, buildOptions
-    hooks.ts                # registry + dispatch + types
+  harness/                  # the harness IS the product (see CLAUDE.md framing)
+    promptAssembler.ts      # WHAT the agent sees: buildSystemPrompt, buildUserPrompt, buildOptions
+    permissionGate.ts       # WHAT the agent can do: canUseTool body, allowlist + screen + prompt
+    hooks.ts                # extension seam: registry + dispatch + types
     turnContext.ts          # TurnContext type + builder
     runner.ts               # the actual query() loop, ~50 lines
-  index.ts                  # IPC plumbing only — delegates to agent/runner
+  index.ts                  # IPC plumbing only — delegates to harness/runner
 ```
 
 **Migration plan:**
@@ -40,8 +206,9 @@ src/main/
 4. Move the runner loop into `runner.ts`. `index.ts` shrinks to pure IPC dispatch.
 
 **What you'd feel:**
-- `agent:query` IPC handler drops from ~150 lines to ~25.
-- New tests: `promptAssembler.test.ts` (pure, fast), `hooks.test.ts` (registry semantics, error isolation, ordering).
+- `agent:query` IPC handler drops from ~150 lines to ~25 — it just builds a `TurnContext` and hands off to `harness/runner.ts`.
+- New tests: `promptAssembler.test.ts` (pure, fast), `hooks.test.ts` (registry semantics, error isolation, ordering), `permissionGate.test.ts` (allowlist short-circuit, AskUserQuestion intercept, screening).
+- Naming clicks: every file's purpose is self-explanatory once the directory is `harness/`.
 - Adding a new feature like Buddy's auto-observe = one hook registration in `runner.ts` setup, no edits to the turn loop.
 - Zero user-visible change.
 

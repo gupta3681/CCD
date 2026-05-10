@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portico — Code Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --vellum: #faf9f5;
+    --ink: #141413;
+    --onyx: #1f1e1d;
+    --graphite: #3d3d3a;
+    --dusty: #73726c;
+    --stone: #9c9a92;
+    --parchment: #dedcd1;
+    --snow: #ffffff;
+    --azure: #ccdbe8;
+    --azure-dark: #8aa3b4;
+    --terra: #d97757;
+    --green: #4a8a5e;
+    --amber: #b89456;
+
+    --serif: 'Lora', ui-serif, Georgia, serif;
+    --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--vellum);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 32px; }
+
+  header.site {
+    border-bottom: 1px solid var(--parchment);
+    padding: 18px 0;
+    background-color: rgba(250, 249, 245, 0.85);
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(6px);
+  }
+  header.site .row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+  .logo { font-family: var(--serif); font-size: 20px; font-weight: 400; }
+  .crumbs { font-size: 12px; color: var(--dusty); }
+  nav.toc { display: flex; gap: 18px; font-size: 12px; flex-wrap: wrap; }
+  nav.toc a { color: var(--graphite); text-decoration: none; }
+  nav.toc a:hover { color: var(--ink); }
+
+  main { padding: 60px 0 120px; }
+  section { margin: 88px 0; scroll-margin-top: 80px; }
+  section.hero { margin-top: 32px; }
+
+  h1.display {
+    font-family: var(--serif); font-weight: 400;
+    font-size: 52px; line-height: 1.05; letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  h2.section-title {
+    font-family: var(--serif); font-weight: 400;
+    font-size: 32px; line-height: 1.15; margin-bottom: 12px;
+  }
+  h3 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: 19px; line-height: 1.3; margin: 28px 0 8px;
+  }
+  .lede { font-size: 17px; color: var(--graphite); max-width: 720px; margin-bottom: 28px; }
+  p { margin-bottom: 14px; max-width: 720px; }
+  p.note { color: var(--dusty); font-size: 13.5px; }
+  ul { padding-left: 22px; margin-bottom: 14px; max-width: 720px; }
+  li { margin-bottom: 5px; }
+
+  code {
+    font-family: var(--mono); font-size: 13px;
+    background: var(--snow); border: 1px solid var(--parchment);
+    border-radius: 4px; padding: 1px 6px;
+  }
+  a.inline { color: var(--ink); border-bottom: 1px solid var(--parchment); text-decoration: none; }
+  a.inline:hover { border-bottom-color: var(--ink); }
+
+  /* ─────────────── Three-process map ─────────────── */
+  .processes-map {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin: 28px 0 32px;
+  }
+  .proc {
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    padding: 22px 18px;
+    position: relative;
+    transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+  }
+  .proc:hover {
+    transform: translateY(-3px);
+    border-color: var(--graphite);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+  }
+  .proc .badge {
+    display: inline-block;
+    font-family: var(--mono); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--dusty);
+    margin-bottom: 8px;
+  }
+  .proc h4 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: 22px; line-height: 1.15; margin-bottom: 8px;
+  }
+  .proc .role { font-size: 13px; color: var(--graphite); margin-bottom: 14px; min-height: 56px; }
+  .proc .keyitems {
+    display: flex; flex-wrap: wrap; gap: 4px 6px;
+    font-family: var(--mono); font-size: 11px;
+  }
+  .proc .keyitems span {
+    background: var(--vellum);
+    border: 1px solid var(--parchment);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--graphite);
+  }
+  .proc.main { border-top: 3px solid var(--azure-dark); }
+  .proc.preload { border-top: 3px solid var(--amber); }
+  .proc.renderer { border-top: 3px solid var(--green); }
+
+  /* ─────────────── File table ─────────────── */
+  .file-table {
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 16px 0 24px;
+  }
+  .file-row {
+    display: grid;
+    grid-template-columns: 220px 1fr 100px;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--parchment);
+    align-items: start;
+  }
+  .file-row:last-child { border-bottom: none; }
+  .file-row:hover { background: var(--vellum); }
+  .file-row .path {
+    font-family: var(--mono); font-size: 12.5px;
+    color: var(--ink);
+    word-break: break-all;
+  }
+  .file-row .desc { font-size: 13px; color: var(--graphite); }
+  .file-row .desc .when {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px; color: var(--dusty);
+  }
+  .file-row .desc .when::before { content: '↳ touch when: '; opacity: 0.7; }
+  .file-row .lines {
+    font-family: var(--mono); font-size: 11px; color: var(--stone);
+    text-align: right;
+  }
+
+  /* Section header for a process */
+  .proc-section-head {
+    display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px;
+  }
+  .proc-section-head .pill {
+    font-family: var(--mono); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: var(--vellum); border: 1px solid var(--parchment);
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: var(--graphite);
+  }
+
+  /* ─────────────── Lookup (where do I change X?) ─────────────── */
+  .lookup {
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .lookup-row {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 18px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--parchment);
+    align-items: start;
+  }
+  .lookup-row:last-child { border-bottom: none; }
+  .lookup-row:hover { background: var(--vellum); }
+  .lookup-q {
+    font-size: 14px; color: var(--ink);
+    font-weight: 500;
+  }
+  .lookup-a { font-size: 12.5px; color: var(--graphite); line-height: 1.6; }
+  .lookup-a code { font-size: 12px; background: var(--vellum); }
+
+  .search-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--parchment);
+    background: var(--snow);
+    border-radius: 9.6px;
+    font-size: 14px;
+    font-family: var(--sans);
+    color: var(--ink);
+    margin-bottom: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--graphite); }
+  .search-input::placeholder { color: var(--stone); }
+
+  /* Reveal on scroll */
+  section { opacity: 0; transform: translateY(8px); transition: opacity 0.5s, transform 0.5s; }
+  section.in-view { opacity: 1; transform: translateY(0); }
+  section.hero { opacity: 1; transform: none; }
+
+  /* Trust boundary diagram */
+  .trust-diagram {
+    background: var(--snow);
+    border: 1px solid var(--parchment);
+    border-radius: 12px;
+    padding: 28px;
+    margin: 16px 0 24px;
+  }
+  .trust-bar {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr 60px 1fr;
+    gap: 0;
+    align-items: center;
+    margin: 16px 0;
+  }
+  .trust-cell {
+    padding: 14px;
+    border: 1px solid var(--parchment);
+    border-radius: 9.6px;
+    background: var(--vellum);
+    text-align: center;
+  }
+  .trust-cell.privileged { border-color: var(--azure-dark); border-width: 2px; }
+  .trust-cell.bridge { border-color: var(--amber); border-width: 2px; }
+  .trust-cell.sandbox { border-color: var(--green); border-width: 2px; }
+  .trust-arrow {
+    text-align: center;
+    color: var(--stone);
+    font-family: var(--mono);
+    font-size: 18px;
+  }
+  .trust-cell .label {
+    font-family: var(--mono); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--dusty);
+    margin-bottom: 4px;
+  }
+  .trust-cell .name {
+    font-family: var(--serif); font-size: 18px;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .trust-cell .what {
+    font-size: 11.5px; color: var(--graphite); line-height: 1.45;
+  }
+
+  /* Footer */
+  footer.site {
+    border-top: 1px solid var(--parchment);
+    padding: 32px 0;
+    color: var(--dusty);
+    font-size: 12.5px;
+  }
+  footer.site .row { display: flex; justify-content: space-between; gap: 12px; }
+
+  /* Highlight target on jump */
+  :target .file-row, .file-row:target {
+    background: var(--azure);
+    transition: background 1.2s;
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="container row">
+    <div>
+      <span class="logo">Portico</span>
+      <span class="crumbs">  ·  Code map</span>
+    </div>
+    <nav class="toc">
+      <a href="#trust">Trust boundary</a>
+      <a href="#map">3-process map</a>
+      <a href="#main">Main</a>
+      <a href="#preload">Preload</a>
+      <a href="#renderer">Renderer</a>
+      <a href="#shared">Shared</a>
+      <a href="#tests">Tests</a>
+      <a href="#lookup">Where do I change X?</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="flows.html">Flows</a>
+    </nav>
+  </div>
+</header>
+
+<main class="container">
+
+<!-- ─────────────────────────── HERO ─────────────────────────── -->
+<section class="hero">
+  <h1 class="display">Where everything lives.</h1>
+  <p class="lede">
+    A tour of every source file in Portico — what it does in one line, when you'd touch it,
+    and a "where do I change X?" lookup at the bottom. If you're presenting tomorrow, this is
+    the page that lets you confidently answer "where would I add that?"
+  </p>
+  <p class="note">
+    Companion to <a class="inline" href="architecture.html">architecture.html</a> (how it works) and
+    <a class="inline" href="flows.html">flows.html</a> (what happens when). This doc is about <em>geography</em> —
+    where files live, what they own, what to touch when you want to change something.
+  </p>
+</section>
+
+<!-- ─────────────────────────── TRUST BOUNDARY ─────────────────────────── -->
+<section id="trust">
+  <h2 class="section-title">Why three processes (the trust boundary)</h2>
+  <p class="lede">
+    Portico is an Electron app. Electron splits your code across three processes for a security
+    reason — not just because it's tidy. The split is the entire reason the API key never
+    touches the browser.
+  </p>
+
+  <div class="trust-diagram">
+    <div class="trust-bar">
+      <div class="trust-cell privileged">
+        <div class="label">Main</div>
+        <div class="name">Privileged</div>
+        <div class="what">Full Node.js access. Owns the API key, the SDK, the filesystem, native dialogs.</div>
+      </div>
+      <div class="trust-arrow">⇄</div>
+      <div class="trust-cell bridge">
+        <div class="label">Preload</div>
+        <div class="name">The bridge</div>
+        <div class="what">Tiny script. Whitelists which IPC channels the renderer can call. Defines <code>window.api</code>.</div>
+      </div>
+      <div class="trust-arrow">⇄</div>
+      <div class="trust-cell sandbox">
+        <div class="label">Renderer</div>
+        <div class="name">Sandboxed</div>
+        <div class="what">Browser-style. Renders attacker-controllable Markdown. Cannot touch Node, the SDK, or the key.</div>
+      </div>
+    </div>
+    <p style="font-size: 13px; color: var(--graphite); margin-top: 16px; max-width: none;">
+      <strong>Why this matters:</strong> the agent generates Markdown that you render in the chat
+      bubbles. If a malicious tool result included a script tag (or some clever injection),
+      sandboxing the renderer means it can't reach your API key, can't read arbitrary files, and
+      can't run shell commands. Every capability the renderer wants (read a file, run a query,
+      pick a folder) goes through a typed IPC channel the preload explicitly exposes.
+    </p>
+  </div>
+
+  <p>
+    Mental rule of thumb: "if it's secret or powerful, it's in main; if it's drawn on screen,
+    it's in renderer; the preload is just the doorway."
+  </p>
+</section>
+
+<!-- ─────────────────────────── 3-PROCESS MAP ─────────────────────────── -->
+<section id="map">
+  <h2 class="section-title">The 3-process map at a glance</h2>
+  <p class="lede">
+    Each process owns a directory. Hover any card for a quick read.
+  </p>
+
+  <div class="processes-map">
+    <div class="proc main">
+      <div class="badge">Process 1 · privileged</div>
+      <h4>Main</h4>
+      <p class="role">Node.js. Owns the SDK, API key, filesystem, IPC handlers, the agent loop.</p>
+      <div class="keyitems">
+        <span>index.ts</span>
+        <span>conversations.ts</span>
+        <span>appSettings.ts</span>
+        <span>userSettings.ts</span>
+        <span>screenTool.ts</span>
+        <span>permissionPatterns.ts</span>
+        <span>guards.ts</span>
+        <span>logger.ts</span>
+        <span>util.ts</span>
+      </div>
+    </div>
+    <div class="proc preload">
+      <div class="badge">Process 2 · bridge</div>
+      <h4>Preload</h4>
+      <p class="role">The bouncer. Defines exactly which IPC channels the renderer can invoke.</p>
+      <div class="keyitems">
+        <span>index.ts</span>
+      </div>
+    </div>
+    <div class="proc renderer">
+      <div class="badge">Process 3 · sandboxed</div>
+      <h4>Renderer</h4>
+      <p class="role">React + Tailwind. Renders the chat UI. Cannot touch the API key or the SDK directly.</p>
+      <div class="keyitems">
+        <span>App.tsx</span>
+        <span>Composer</span>
+        <span>BubbleView</span>
+        <span>Sidebar</span>
+        <span>RightSidebar</span>
+        <span>Settings</span>
+        <span>Tour</span>
+        <span>PersonaWizard</span>
+        <span>UserQuestionModal</span>
+        <span>ModelPicker</span>
+        <span>Pet</span>
+        <span>Icons</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    Plus one shared file: <a class="inline" href="#shared"><code>src/shared/types.ts</code></a> —
+    the only TypeScript file imported across the trust boundary. Houses every type that crosses
+    main↔preload↔renderer.
+  </p>
+</section>
+
+<!-- ─────────────────────────── MAIN PROCESS ─────────────────────────── -->
+<section id="main">
+  <div class="proc-section-head">
+    <h2 class="section-title" style="margin-bottom: 0;">Main process · <code>src/main/</code></h2>
+    <span class="pill">Node.js · privileged</span>
+  </div>
+  <p class="lede">
+    The brain. Holds the API key, talks to the Claude Agent SDK, owns persistence, registers
+    every IPC handler. ~9 files, none crazy big except <code>index.ts</code>.
+  </p>
+
+  <div class="file-table">
+
+    <div class="file-row" id="main-index">
+      <div class="path">main/index.ts</div>
+      <div class="desc">
+        The orchestrator. Creates the BrowserWindow, registers all IPC handlers, runs the
+        <code>agent:query</code> loop with the SDK, owns the <code>canUseTool</code> callback,
+        manages cancellation, holds the active runs map.
+        <span class="when">adding/changing IPC handlers, the agent loop, the permission flow, model resolution.</span>
+      </div>
+      <div class="lines">680 lines</div>
+    </div>
+
+    <div class="file-row" id="main-conversations">
+      <div class="path">main/conversations.ts</div>
+      <div class="desc">
+        The conversation store. JSON file at <code>&lt;userData&gt;/portico/conversations.json</code>.
+        All metadata setters (sessionId, cwd, trustProject, model, sessionAllowedPatterns) go through
+        the <code>updateConversation()</code> helper. Sidebar sort field <code>lastMessageAt</code>
+        is ONLY bumped by <code>save()</code> — not by any setter.
+        <span class="when">adding a new per-conversation field, changing how sessions persist, sidebar order rules.</span>
+      </div>
+      <div class="lines">245 lines</div>
+    </div>
+
+    <div class="file-row" id="main-appSettings">
+      <div class="path">main/appSettings.ts</div>
+      <div class="desc">
+        App-wide settings (gateway URL, API key, permissionMode, autoScreen, defaultModel).
+        Persists at <code>&lt;userData&gt;/portico/settings.json</code>. API key encrypted via
+        Electron <code>safeStorage</code> when keychain available, plaintext fallback (warned in UI).
+        Has a <code>WRITABLE</code> whitelist — any new field you want the renderer to set must be
+        added here.
+        <span class="when">adding a new global setting, changing key storage, gateway env application.</span>
+      </div>
+      <div class="lines">152 lines</div>
+    </div>
+
+    <div class="file-row" id="main-userSettings">
+      <div class="path">main/userSettings.ts</div>
+      <div class="desc">
+        Manages files under <code>~/.claude/</code>: CLAUDE.md (memory), soul.md (response style),
+        skills/. Owns the persona wizard's seeding logic, reads back the user's name for the
+        greeting. <code>readSoul()</code> drives the system-prompt append.
+        <span class="when">changing how persona wizard works, editing the CLAUDE.md/soul.md schema, skill CRUD.</span>
+      </div>
+      <div class="lines">245 lines</div>
+    </div>
+
+    <div class="file-row" id="main-screenTool">
+      <div class="path">main/screenTool.ts</div>
+      <div class="desc">
+        The Haiku auto-screen. Given a tool call, classifies SAFE / CAUTION / DANGEROUS in ~300ms
+        with a structured Anthropic API call. Caches its client; invalidates on gateway settings
+        change.
+        <span class="when">tuning the screening prompt, changing the screening model, adding new verdicts.</span>
+      </div>
+      <div class="lines">108 lines</div>
+    </div>
+
+    <div class="file-row" id="main-permissionPatterns">
+      <div class="path">main/permissionPatterns.ts</div>
+      <div class="desc">
+        Per-session allowlist matcher. Pattern syntax: <code>Bash(python *)</code>,
+        <code>Read(/foo/**)</code>, bare <code>Edit</code>. Glob → regex with <code>**</code>
+        crossing slashes, <code>*</code> not. <code>suggestPattern()</code> generates the
+        "Allow for session" recommendations.
+        <span class="when">extending the pattern syntax, adding new matchable tool fields.</span>
+      </div>
+      <div class="lines">131 lines</div>
+    </div>
+
+    <div class="file-row" id="main-guards">
+      <div class="path">main/guards.ts</div>
+      <div class="desc">
+        Path + URL safety checks. <code>isCwdSafe()</code> (no symlinks out of home),
+        <code>isPathRevealable()</code> (only paths under home or userData),
+        <code>isExternalSchemeAllowed()</code> (only https/http/mailto for shell.openExternal).
+        Used by every IPC handler that touches the filesystem or shell.
+        <span class="when">adding a new path-based IPC, allowing new URL schemes.</span>
+      </div>
+      <div class="lines">50 lines</div>
+    </div>
+
+    <div class="file-row" id="main-logger">
+      <div class="path">main/logger.ts</div>
+      <div class="desc">
+        In-memory ring buffer (500 entries) + daily-rotated log files at
+        <code>&lt;userData&gt;/portico/logs/portico-&lt;YYYY-MM-DD&gt;.log</code>. Broadcasts
+        <code>logs:appended</code> events to all BrowserWindows so the Settings → Advanced tab
+        shows live logs.
+        <span class="when">changing log retention, adding structured fields, switching log destinations.</span>
+      </div>
+      <div class="lines">123 lines</div>
+    </div>
+
+    <div class="file-row" id="main-util">
+      <div class="path">main/util.ts</div>
+      <div class="desc">
+        Two helpers: <code>porticoDir()</code> (returns the userData/portico dir, creates if missing)
+        and <code>atomicWrite(path, content)</code> (write to <code>.tmp</code>, then rename — never
+        leaves a half-written file if the process crashes mid-write).
+        <span class="when">adding new file persistence; reach for atomicWrite, don't use writeFileSync directly.</span>
+      </div>
+      <div class="lines">23 lines</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────── PRELOAD ─────────────────────────── -->
+<section id="preload">
+  <div class="proc-section-head">
+    <h2 class="section-title" style="margin-bottom: 0;">Preload · <code>src/preload/</code></h2>
+    <span class="pill">The bouncer</span>
+  </div>
+  <p class="lede">
+    The smallest of the three processes. One file. Its only job: define exactly which functions
+    the renderer can call on <code>window.api</code>. Nothing else gets through.
+  </p>
+
+  <div class="file-table">
+    <div class="file-row" id="preload-index">
+      <div class="path">preload/index.ts</div>
+      <div class="desc">
+        Wraps every <code>ipcRenderer.invoke(channel, ...)</code> in a typed function and exposes
+        them via <code>contextBridge.exposeInMainWorld('api', { ... })</code>. Re-exports types from
+        <code>shared/types.ts</code> — type-only re-exports! Runtime values must come from
+        <code>shared/types</code> directly, otherwise vite tries to bundle the preload (which
+        depends on Electron) into the renderer (which doesn't have Electron) and the page goes
+        blank.
+        <span class="when">adding a new IPC channel: handler in main/index.ts → typed wrapper here → use as window.api.foo.bar() in renderer.</span>
+      </div>
+      <div class="lines">242 lines</div>
+    </div>
+  </div>
+
+  <h3>How to add a new IPC channel</h3>
+  <ol style="padding-left: 22px; max-width: 720px;">
+    <li><strong>Type</strong> — if anything new crosses the boundary, define it in <code>src/shared/types.ts</code>.</li>
+    <li><strong>Handler</strong> — register in <code>src/main/index.ts</code>: <code>ipcMain.handle('namespace:verb', async (_e, ...) =&gt; { ... })</code>.</li>
+    <li><strong>Wrapper</strong> — add a typed function under <code>api</code> in <code>src/preload/index.ts</code>.</li>
+    <li><strong>Use</strong> — call from renderer as <code>await window.api.namespace.verb(...)</code>.</li>
+  </ol>
+  <p class="note">Channel names use <code>namespace:verb</code> (e.g. <code>conversations:list</code>, <code>agent:cancel</code>).</p>
+</section>
+
+<!-- ─────────────────────────── RENDERER ─────────────────────────── -->
+<section id="renderer">
+  <div class="proc-section-head">
+    <h2 class="section-title" style="margin-bottom: 0;">Renderer · <code>src/renderer/src/</code></h2>
+    <span class="pill">React + Tailwind v4 · sandboxed</span>
+  </div>
+  <p class="lede">
+    The chat UI. One top-level <code>App.tsx</code> doing orchestration; each visual unit
+    (sidebar, composer, bubble, modal, etc.) lives in its own component file. Talks to main
+    only via <code>window.api</code>.
+  </p>
+
+  <div class="file-table">
+
+    <div class="file-row" id="renderer-app">
+      <div class="path">renderer/src/App.tsx</div>
+      <div class="desc">
+        The orchestrator. All conversation state (id, bubbles, cwd, trustProject, model,
+        sessionPatterns), IPC subscriptions (onMessage, onPermissionRequest, onAskUserQuestion,
+        onCancelled, onDone, onError), the streaming applyStreamEvent function, the
+        decidePermission flow, debounced save effect, gateway info refresh.
+        <span class="when">adding new conversation-level state, changing how the page is laid out, wiring new IPC events.</span>
+      </div>
+      <div class="lines">891 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-composer">
+      <div class="path">renderer/src/components/Composer.tsx</div>
+      <div class="desc">
+        The message-composer at the bottom: textarea + circular send/stop button + the floating
+        Pet mascot. Self-contained — App hands it value/onSend/onStop/busy and Composer owns the
+        rest (focus styling, Enter-to-send, pet positioning).
+        <span class="when">adding image paste, @-mention chips, slash launcher, model picker chip — all land here.</span>
+      </div>
+      <div class="lines">86 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-bubbleview">
+      <div class="path">renderer/src/components/BubbleView.tsx</div>
+      <div class="desc">
+        Renders one bubble (any role). Sub-components: TextBlock, ThinkingBlock,
+        ToolUseBlock (with summarizer + diff view), ToolResultBlock, PermissionPrompt,
+        DiffView (LCS-based unified diff). The biggest renderer file.
+        <span class="when">new content block type, changing how tool calls/results display, permission prompt UX, diff renderer.</span>
+      </div>
+      <div class="lines">578 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-sidebar">
+      <div class="path">renderer/src/components/Sidebar.tsx</div>
+      <div class="desc">
+        Left rail. Wordmark, sidebar collapse/Settings buttons at the top, "New session" button,
+        "Recents" list of conversations sorted by lastMessageAt.
+        <span class="when">changing the sidebar layout, adding new top-level controls, modifying session list rendering.</span>
+      </div>
+      <div class="lines">195 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-rightsidebar">
+      <div class="path">renderer/src/components/RightSidebar.tsx</div>
+      <div class="desc">
+        Right rail. "Working folder" card (cwd picker + reveal + clear + trust toggle) and
+        "Allowed this session" card (revoke per-pattern). Collapsible.
+        <span class="when">adding new per-conversation surfaces (cwd-related, scoped permissions, future heartbeat config).</span>
+      </div>
+      <div class="lines">212 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-settings">
+      <div class="path">renderer/src/components/Settings.tsx</div>
+      <div class="desc">
+        The full Settings page. Six tabs: Gateway, Permissions, Memory (CLAUDE.md), Soul (soul.md),
+        Skills, Advanced (live logs + re-run tour). Each tab is a sub-component in the same file.
+        <span class="when">adding a new settings tab — see CLAUDE.md "How to add things" recipe.</span>
+      </div>
+      <div class="lines">872 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-tour">
+      <div class="path">renderer/src/components/Tour.tsx</div>
+      <div class="desc">
+        First-run guided tour. 6-step coachmark walkthrough with spotlight cutout (4 dim panels
+        around the anchor + ring). localStorage flag <code>portico.tourCompleted</code> tracks
+        completion. Re-runnable from Settings → Advanced.
+        <span class="when">adding/removing tour steps, changing anchor refs, updating tour copy.</span>
+      </div>
+      <div class="lines">345 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-personawizard">
+      <div class="path">renderer/src/components/PersonaWizard.tsx</div>
+      <div class="desc">
+        First-run persona setup. Three options (developer / pm / director), name field, "what
+        you're working on" field. Calls <code>settings.profile.seed()</code> which writes an
+        "About me" section to CLAUDE.md and seeds soul.md with the persona template.
+        <span class="when">changing persona presets, wizard copy, what gets seeded into CLAUDE.md/soul.md.</span>
+      </div>
+      <div class="lines">140 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-userquestionmodal">
+      <div class="path">renderer/src/components/UserQuestionModal.tsx</div>
+      <div class="desc">
+        The dedicated modal for the SDK's AskUserQuestion tool. Renders one card per question
+        with single-select radios or multi-select checkboxes. Esc dismisses, ⌘↵ submits, click
+        backdrop dismisses. The modal sends selections back via the same respondPermission IPC
+        channel (with userAnswers field) — main translates them to the tool's "result" via
+        deny-with-message.
+        <span class="when">changing how questions render, adding new question types (e.g. free-text answers).</span>
+      </div>
+      <div class="lines">209 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-modelpicker">
+      <div class="path">renderer/src/components/ModelPicker.tsx</div>
+      <div class="desc">
+        Two-variant dropdown. <code>variant="header"</code> for the inline per-conversation switcher
+        beside the gateway badge; <code>variant="settings"</code> for the global default in
+        Settings → Gateway. Sources from <code>KNOWN_MODELS</code> in shared/types. Outside-click
+        + Esc close handled internally.
+        <span class="when">adding a new model — edit KNOWN_MODELS in shared/types and the picker updates everywhere.</span>
+      </div>
+      <div class="lines">189 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-pet">
+      <div class="path">renderer/src/components/Pet.tsx</div>
+      <div class="desc">
+        The little teal mascot perched on the composer. Hand-drawn pixel SVG, idle bob + blink,
+        thinking state when busy, click-to-pet wiggle. Pure local state, no IPC. Color tokens
+        at the top of the file.
+        <span class="when">tweaking the mascot color/shape/animations, adding new moods.</span>
+      </div>
+      <div class="lines">177 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-icons">
+      <div class="path">renderer/src/components/Icons.tsx</div>
+      <div class="desc">
+        Single source of truth for inline SVG icons (Plus, Panel, Gear, Trash, Spark, Arrow,
+        SendArrow, StopGlyph). All inherit currentColor.
+        <span class="when">adding a new icon — drop the SVG in here, import where needed.</span>
+      </div>
+      <div class="lines">87 lines</div>
+    </div>
+
+    <div class="file-row" id="renderer-main">
+      <div class="path">renderer/src/main.tsx</div>
+      <div class="desc">
+        React entry point. Mounts <code>&lt;App /&gt;</code> into the DOM. Boring.
+        <span class="when">basically never.</span>
+      </div>
+      <div class="lines">~10 lines</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────── SHARED ─────────────────────────── -->
+<section id="shared">
+  <div class="proc-section-head">
+    <h2 class="section-title" style="margin-bottom: 0;">Shared · <code>src/shared/</code></h2>
+    <span class="pill">Cross-process types</span>
+  </div>
+  <p class="lede">
+    The only file imported across the trust boundary. Pure TypeScript — no Node, no Electron,
+    no React. If a type travels between main, preload, and renderer, it lives here.
+  </p>
+
+  <div class="file-table">
+    <div class="file-row" id="shared-types">
+      <div class="path">shared/types.ts</div>
+      <div class="desc">
+        All shared types: <code>Block</code>, <code>Bubble</code>, <code>Conversation</code>,
+        <code>AppSettings</code>, <code>PermissionRequest</code>, <code>Screening</code>,
+        <code>UserQuestion</code>, <code>UserQuestionAnswer</code>, etc. Plus runtime constants
+        like <code>KNOWN_MODELS</code>, <code>DEFAULT_CONTEXT_WINDOW</code>, and helper functions
+        (<code>lookupModel</code>, <code>contextWindowFor</code>) that all three processes can use.
+        <span class="when">adding a new field that crosses the boundary, adding a new model to the picker, anything that needs to be the same shape on both sides.</span>
+      </div>
+      <div class="lines">243 lines</div>
+    </div>
+  </div>
+
+  <p class="note">
+    <strong>Gotcha:</strong> renderer code can import <em>types</em> from <code>../../preload</code>
+    (they're erased at compile time), but <em>runtime values</em> like <code>KNOWN_MODELS</code>
+    must come from <code>../../shared/types</code> directly. Importing a runtime value from preload
+    drags the preload's contextBridge calls into the renderer bundle and crashes the page on
+    load. We learned this the hard way.
+  </p>
+</section>
+
+<!-- ─────────────────────────── TESTS ─────────────────────────── -->
+<section id="tests">
+  <h2 class="section-title">Tests · <code>tests/</code></h2>
+  <p class="lede">
+    Vitest. 130 tests across 7 files. All main-process modules; renderer is tested manually for
+    now.
+  </p>
+
+  <div class="file-table">
+    <div class="file-row">
+      <div class="path">tests/setup.ts</div>
+      <div class="desc">Mocks <code>electron</code> (safeStorage, app.getPath, dialog). Per-test scratch <code>userData</code> + <code>HOME</code> dirs so writes don't leak between tests.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/conversations.test.ts</div>
+      <div class="desc">Conversation store CRUD + migration. Verifies upsert behavior, sort field invariants, atomic write recovery.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/appSettings.test.ts</div>
+      <div class="desc">Settings persistence, encrypted vs. plaintext key storage, applyToEnv push/pull, WRITABLE whitelist enforcement.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/userSettings.test.ts</div>
+      <div class="desc">CLAUDE.md / soul.md / skills CRUD. Persona seeding writes the right "About me" section.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/screenTool.test.ts</div>
+      <div class="desc">Haiku screening output parsing, error fallback to CAUTION, client cache invalidation on settings change.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/permissionPatterns.test.ts</div>
+      <div class="desc">Pattern parser, glob → regex, matches() per-tool target extraction, suggestPattern round-trip.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/guards.test.ts</div>
+      <div class="desc">URL scheme allowlist, cwd-safe path checks, reveal-path home/userData boundary.</div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">tests/util.test.ts</div>
+      <div class="desc">atomicWrite + porticoDir.</div>
+      <div class="lines"></div>
+    </div>
+  </div>
+
+  <p class="note">
+    Pattern: every test does dynamic <code>await import(...)</code> inside its <code>it()</code>
+    block. Module-scope state in the SUT (caches, env reads) gets a fresh slate per test instead
+    of leaking across them.
+  </p>
+</section>
+
+<!-- ─────────────────────────── LOOKUP ─────────────────────────── -->
+<section id="lookup">
+  <h2 class="section-title">"Where do I change X?"</h2>
+  <p class="lede">
+    The reference table. If someone asks "how would you add Y?" in the demo tomorrow, find the
+    row that matches their question. Type to filter.
+  </p>
+
+  <input type="text" class="search-input" id="lookupSearch" placeholder="Filter… (e.g. 'permission', 'model', 'sidebar')" autocomplete="off" />
+
+  <div class="lookup" id="lookupTable">
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new model option (e.g. Sonnet 5)</div>
+      <div class="lookup-a">
+        Add a <code>ModelOption</code> entry to <code>KNOWN_MODELS</code> in
+        <code>src/shared/types.ts</code>. Picker UI, default dropdown, gateway badge, context
+        meter all read from there — they update automatically.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new global setting (something user toggles in Settings)</div>
+      <div class="lookup-a">
+        1. Add the field to <code>AppSettings</code> in <code>src/shared/types.ts</code>.<br>
+        2. Add the key to the <code>WRITABLE</code> set in <code>src/main/appSettings.ts</code>.<br>
+        3. Add the UI in <code>src/renderer/src/components/Settings.tsx</code> — pick the right tab
+        or add a new one.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new per-conversation field (something stored per chat)</div>
+      <div class="lookup-a">
+        1. Add the field to <code>Conversation</code> in <code>src/shared/types.ts</code>.<br>
+        2. Add a <code>setField()</code> helper in <code>src/main/conversations.ts</code> using
+        the <code>updateConversation()</code> helper — one line.<br>
+        3. New IPC handler in <code>src/main/index.ts</code>: <code>conversations:setField</code>.<br>
+        4. Add to <code>conversations</code> in preload.<br>
+        5. Use from renderer as <code>window.api.conversations.setField(id, value)</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new tool (via SDK MCP)</div>
+      <div class="lookup-a">
+        Define an SDK MCP server in TS (small in-process MCP) and pass it via
+        <code>mcpServers</code> in the <code>query()</code> options inside
+        <code>src/main/index.ts</code>'s <code>agent:query</code> handler. The tool then flows
+        through the existing <code>canUseTool</code> permission UI for free.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Customize the AskUserQuestion modal</div>
+      <div class="lookup-a">
+        UI: <code>src/renderer/src/components/UserQuestionModal.tsx</code>. Wiring (parsing the
+        SDK input, formatting the answer back to the agent): <code>parseAskUserQuestionInput()</code>
+        and <code>formatUserAnswers()</code> in <code>src/main/index.ts</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change how tool calls render (compact log style, diff view, etc.)</div>
+      <div class="lookup-a">
+        <code>ToolUseBlock</code> + <code>summarizeToolCall()</code> + <code>ToolDetail</code> +
+        <code>DiffView</code> all in <code>src/renderer/src/components/BubbleView.tsx</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the system prompt or its layers</div>
+      <div class="lookup-a">
+        <code>systemPromptFor()</code>, <code>buildAppend()</code>, <code>PORTICO_APPEND</code>,
+        <code>PROFILE_FILES_CODA</code> in <code>src/main/index.ts</code>. soul.md content lives
+        in <code>~/.claude/soul.md</code> and is loaded by <code>userSettings.readSoul()</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new permission-mode option (e.g. plan mode)</div>
+      <div class="lookup-a">
+        1. Add to <code>PermissionMode</code> union in <code>src/shared/types.ts</code>.<br>
+        2. Add the corresponding branch in <code>agent:query</code>'s options block in
+        <code>src/main/index.ts</code> (e.g. set <code>disallowedTools</code> for plan mode).<br>
+        3. Surface in Settings → Permissions tab in <code>Settings.tsx</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the auto-screen prompt or model</div>
+      <div class="lookup-a">
+        <code>src/main/screenTool.ts</code>. Prompt is at the top of <code>screenTool()</code>;
+        model is the <code>SCREEN_MODEL</code> constant.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Allow a new pattern syntax for session permissions</div>
+      <div class="lookup-a">
+        <code>src/main/permissionPatterns.ts</code>. Update <code>PATTERN_RE</code>,
+        <code>parse()</code>, <code>globToRegex()</code> as needed. Add tests to
+        <code>tests/permissionPatterns.test.ts</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change how messages stream into bubbles</div>
+      <div class="lookup-a">
+        <code>applyStreamEvent()</code> in <code>src/renderer/src/App.tsx</code>. The canonical
+        assistant-message handler (which backfills tool inputs at end-of-turn) is right below it.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the working folder picker / trust flag</div>
+      <div class="lookup-a">
+        UI: <code>src/renderer/src/components/RightSidebar.tsx</code>. Backend: setCwd /
+        setTrustProject in <code>src/main/conversations.ts</code> + the corresponding IPC
+        handlers in <code>src/main/index.ts</code> (<code>conversations:setCwd</code>,
+        <code>conversations:setTrustProject</code>).
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the message composer (input, send button, mascot)</div>
+      <div class="lookup-a">
+        <code>src/renderer/src/components/Composer.tsx</code>. Pet positioning is the absolute
+        wrapper at the top of the JSX. Send/Stop buttons are inline at the right.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the mascot (color, shape, mood)</div>
+      <div class="lookup-a">
+        <code>src/renderer/src/components/Pet.tsx</code>. Color tokens at the top of the file.
+        Each mood (idle/thinking/happy) has its own SVG group.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new sidebar item or change recents sort</div>
+      <div class="lookup-a">
+        UI: <code>src/renderer/src/components/Sidebar.tsx</code>. Sort field is
+        <code>lastMessageAt</code>, computed in <code>src/main/conversations.ts:list()</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new IPC channel</div>
+      <div class="lookup-a">
+        1. Define the type (if anything new crosses the boundary) in
+        <code>src/shared/types.ts</code>.<br>
+        2. Register the handler in <code>src/main/index.ts</code>:
+        <code>ipcMain.handle('namespace:verb', ...)</code>.<br>
+        3. Expose a typed wrapper under <code>api</code> in <code>src/preload/index.ts</code>.<br>
+        4. Use from renderer as <code>await window.api.namespace.verb(...)</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new env var</div>
+      <div class="lookup-a">
+        Read in <code>src/main/index.ts</code> (only main has <code>process.env</code> access).
+        Document in <code>CLAUDE.md</code> env table AND <code>.env.example</code>. Surface to
+        renderer via <code>gateway:info</code> or a new IPC handler — <strong>never</strong>
+        expose secrets directly.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new content block type for bubbles (e.g. image, table)</div>
+      <div class="lookup-a">
+        1. Extend the <code>Block</code> union in <code>src/shared/types.ts</code>.<br>
+        2. Render branch in <code>src/renderer/src/components/BubbleView.tsx</code>.<br>
+        3. If it streams, add a handler in <code>applyStreamEvent</code> (<code>App.tsx</code>).<br>
+        4. If it appears in old conversations, add a fallback in
+        <code>src/main/conversations.ts:migrate</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Add a new Settings tab</div>
+      <div class="lookup-a">
+        1. Add to <code>Tab</code> union at the top of
+        <code>src/renderer/src/components/Settings.tsx</code>.<br>
+        2. Add a <code>&lt;TabBtn&gt;</code> to the nav and a render branch to the body.<br>
+        3. Write a <code>function NewTab(): JSX.Element</code> sub-component in the same file.<br>
+        4. If it persists state, hit the "Add a new global setting" recipe above.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change the persona wizard or its templates</div>
+      <div class="lookup-a">
+        UI: <code>src/renderer/src/components/PersonaWizard.tsx</code>. Templates and seeding
+        logic: <code>SOUL_TEMPLATES</code> + <code>seedProfile()</code> in
+        <code>src/main/userSettings.ts</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change tour steps or copy</div>
+      <div class="lookup-a">
+        <code>STEPS</code> array at the top of
+        <code>src/renderer/src/components/Tour.tsx</code>. Anchor refs are forwarded from
+        <code>App.tsx</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change logging (retention, structure, destination)</div>
+      <div class="lookup-a">
+        <code>src/main/logger.ts</code>. Live-log viewer in Settings → Advanced is in
+        <code>Settings.tsx</code>'s <code>AdvancedTab</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Allow a new external URL scheme</div>
+      <div class="lookup-a">
+        <code>isExternalSchemeAllowed()</code> in <code>src/main/guards.ts</code>. Add to the
+        allowlist and add a case to <code>tests/guards.test.ts</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Bundle a new built-in skill</div>
+      <div class="lookup-a">
+        Drop a <code>SKILL.md</code> with frontmatter into
+        <code>resources/bundled/skills/&lt;name&gt;/</code>. To load it, the conversation needs
+        cwd set to a workspace dir that includes it OR pass via <code>settingSources</code> /
+        <code>skills</code> in <code>agent:query</code>.
+      </div>
+    </div>
+
+    <div class="lookup-row">
+      <div class="lookup-q">Change branding / app name (window title, etc.)</div>
+      <div class="lookup-a">
+        Window title in <code>src/main/index.ts</code> (BrowserWindow options). User-visible
+        strings are in: <code>App.tsx</code> (header "Powered by Claude", greeting, empty
+        states), <code>Sidebar.tsx</code> (wordmark), <code>electron-builder.yml</code>
+        (productName), README. Internal slugs (<code>CCD</code>, <code>com.portico.app</code>,
+        package name) stay per the branding rule.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────── HARNESS RECAP ─────────────────────────── -->
+<section id="harness-lens">
+  <h2 class="section-title">Quick recap: the harness lens</h2>
+  <p class="lede">
+    Portico is a <strong>harness</strong> — wraps the Claude Agent SDK with controlled mediation
+    between human and agent. Four mediation surfaces; every feature lives at one. Useful when
+    deciding "where does this go?"
+  </p>
+
+  <div class="file-table">
+    <div class="file-row">
+      <div class="path">What the agent sees</div>
+      <div class="desc">
+        System prompt, settingSources, cwd, prepended user-prompt notes.
+        <span class="when">main/index.ts (systemPromptFor, buildAppend), main/userSettings.ts (soul.md, CLAUDE.md).</span>
+      </div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">What the agent can do</div>
+      <div class="desc">
+        Tool allowlist, canUseTool callback, mcpServers, permissionMode.
+        <span class="when">main/index.ts (canUseTool body), main/permissionPatterns.ts, main/screenTool.ts.</span>
+      </div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">When it acts</div>
+      <div class="desc">
+        Who triggers a turn (today: just the user via Send button).
+        <span class="when">main/index.ts (agent:query handler is the only trigger today; future heartbeat lands here).</span>
+      </div>
+      <div class="lines"></div>
+    </div>
+    <div class="file-row">
+      <div class="path">How the human stays in the loop</div>
+      <div class="desc">
+        Bubbles, modals, badges, observable state, header info, mascot.
+        <span class="when">renderer/components/BubbleView.tsx, PermissionPrompt, UserQuestionModal, Settings, Pet, Composer.</span>
+      </div>
+      <div class="lines"></div>
+    </div>
+  </div>
+
+  <p class="note">
+    Detailed walkthroughs of each surface in <a class="inline" href="flows.html">flows.html</a>.
+  </p>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="container row">
+    <span>Portico — internal v0.1</span>
+    <span>Companions: <a class="inline" href="architecture.html">architecture.html</a> · <a class="inline" href="flows.html">flows.html</a></span>
+  </div>
+</footer>
+
+<script>
+  // Reveal-on-scroll
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) e.target.classList.add('in-view')
+  }, { threshold: 0.05 })
+  document.querySelectorAll('section').forEach(s => observer.observe(s))
+
+  // Lookup filter
+  const search = document.getElementById('lookupSearch')
+  const rows = document.querySelectorAll('#lookupTable .lookup-row')
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase()
+    rows.forEach((row) => {
+      if (!q) { row.style.display = ''; return }
+      const text = row.textContent.toLowerCase()
+      row.style.display = text.includes(q) ? '' : 'none'
+    })
+  })
+</script>
+
+</body>
+</html>
