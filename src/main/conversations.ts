@@ -84,17 +84,40 @@ export function getSessionId(id: string): string | null {
   return load()[id]?.sessionId ?? null
 }
 
-export function setSessionId(id: string, sessionId: string): void {
+/**
+ * Upsert helper. Every metadata setter in this module needs the same dance:
+ * load the cache, find the record (or stub one if it doesn't exist yet —
+ * happens when the SDK's init message lands before the renderer's first
+ * bubble save), apply the patch, bump `updatedAt`, persist.
+ *
+ * Crucially this does NOT bump `lastMessageAt` — that's the sidebar sort
+ * field and only `save()` (which means "real bubbles changed") touches it.
+ */
+function updateConversation(id: string, patch: Partial<Conversation>): Conversation {
   const store = load()
   const now = Date.now()
   const existing = store[id]
-  // Upsert: the SDK init event often arrives before the renderer's first
-  // debounced bubble save, so the conversation record may not exist yet.
-  // Create a stub here; the renderer's next save will fill in title + bubbles.
-  store[id] = existing
-    ? { ...existing, sessionId, updatedAt: now }
-    : { id, title: 'New chat', createdAt: now, updatedAt: now, sessionId, bubbles: [] }
+  const conv: Conversation = existing
+    ? { ...existing, ...patch, updatedAt: now }
+    : {
+        id,
+        title: 'New chat',
+        createdAt: now,
+        updatedAt: now,
+        sessionId: null,
+        bubbles: [],
+        ...patch
+      }
+  store[id] = conv
   persist()
+  return conv
+}
+
+export function setSessionId(id: string, sessionId: string): void {
+  // SDK init message often arrives before the renderer's first debounced
+  // bubble save, so the conversation record may not exist yet — the
+  // updateConversation upsert handles that.
+  updateConversation(id, { sessionId })
 }
 
 export function getCwd(id: string): string | null {
@@ -102,13 +125,7 @@ export function getCwd(id: string): string | null {
 }
 
 export function setCwd(id: string, cwd: string | null): void {
-  const store = load()
-  const now = Date.now()
-  const existing = store[id]
-  store[id] = existing
-    ? { ...existing, cwd, updatedAt: now }
-    : { id, title: 'New chat', createdAt: now, updatedAt: now, sessionId: null, bubbles: [], cwd }
-  persist()
+  updateConversation(id, { cwd })
 }
 
 export function getTrustProject(id: string): boolean {
@@ -120,39 +137,11 @@ export function getInterrupted(id: string): boolean {
 }
 
 export function setInterrupted(id: string, value: boolean): void {
-  const store = load()
-  const now = Date.now()
-  const existing = store[id]
-  store[id] = existing
-    ? { ...existing, lastInterrupted: value, updatedAt: now }
-    : {
-        id,
-        title: 'New chat',
-        createdAt: now,
-        updatedAt: now,
-        sessionId: null,
-        bubbles: [],
-        lastInterrupted: value
-      }
-  persist()
+  updateConversation(id, { lastInterrupted: value })
 }
 
 export function setTrustProject(id: string, trust: boolean): void {
-  const store = load()
-  const now = Date.now()
-  const existing = store[id]
-  store[id] = existing
-    ? { ...existing, trustProject: trust, updatedAt: now }
-    : {
-        id,
-        title: 'New chat',
-        createdAt: now,
-        updatedAt: now,
-        sessionId: null,
-        bubbles: [],
-        trustProject: trust
-      }
-  persist()
+  updateConversation(id, { trustProject: trust })
 }
 
 // ── Per-session permission allowlist ───────────────────────────────────
@@ -165,43 +154,38 @@ export function getSessionAllowedPatterns(id: string): string[] {
 }
 
 export function addSessionAllowedPattern(id: string, pattern: string): string[] {
-  const store = load()
-  const now = Date.now()
-  const existing = store[id]
-  const current = existing?.sessionAllowedPatterns ?? []
+  const current = load()[id]?.sessionAllowedPatterns ?? []
   // Dedupe — a re-approval of the same pattern shouldn't bloat the list.
   const next = current.includes(pattern) ? current : [...current, pattern]
-  store[id] = existing
-    ? { ...existing, sessionAllowedPatterns: next, updatedAt: now }
-    : {
-        id,
-        title: 'New chat',
-        createdAt: now,
-        updatedAt: now,
-        sessionId: null,
-        bubbles: [],
-        sessionAllowedPatterns: next
-      }
-  persist()
+  updateConversation(id, { sessionAllowedPatterns: next })
   return next
 }
 
 export function removeSessionAllowedPattern(id: string, pattern: string): string[] {
-  const store = load()
-  const existing = store[id]
+  // Early-return when the conversation doesn't exist — no point upserting a
+  // stub just to remove from an empty list.
+  const existing = load()[id]
   if (!existing) return []
   const next = (existing.sessionAllowedPatterns ?? []).filter((p) => p !== pattern)
-  store[id] = { ...existing, sessionAllowedPatterns: next, updatedAt: Date.now() }
-  persist()
+  updateConversation(id, { sessionAllowedPatterns: next })
   return next
 }
 
 export function clearSessionAllowedPatterns(id: string): void {
-  const store = load()
-  const existing = store[id]
-  if (!existing) return
-  store[id] = { ...existing, sessionAllowedPatterns: [], updatedAt: Date.now() }
-  persist()
+  if (!load()[id]) return
+  updateConversation(id, { sessionAllowedPatterns: [] })
+}
+
+// ── Per-conversation model override ────────────────────────────────────
+
+export function getModel(id: string): string | null {
+  return load()[id]?.model ?? null
+}
+
+export function setModel(id: string, model: string | null): void {
+  // Empty / null clears the override → falls back to global default.
+  const value = model && model.trim() ? model.trim() : undefined
+  updateConversation(id, { model: value })
 }
 
 function bubbleText(b: Bubble): string {

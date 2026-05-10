@@ -32,11 +32,97 @@ interface PermissionDecision {
   reason?: string
   /** When set, the renderer chose "Allow for session" — persist this pattern. */
   allowPattern?: string
+  /** When the prompt was an AskUserQuestion modal, these are the user's selections. */
+  userAnswers?: import('./../shared/types').UserQuestionAnswer[]
 }
 interface PendingPermission {
   resolve: (decision: PermissionDecision) => void
 }
 const pendingPermissions = new Map<string, PendingPermission>()
+
+/**
+ * Wait for either a renderer response (via pendingPermissions) or an abort.
+ * Removes the abort listener after either path resolves so long-lived turns
+ * with many tool calls don't leak listeners on the AbortSignal. Also
+ * single-resolves: a late-firing abort after a normal resolve is a no-op.
+ */
+function awaitPermissionOrAbort(
+  requestId: string,
+  signal: AbortSignal
+): Promise<PermissionDecision> {
+  return new Promise<PermissionDecision>((resolve) => {
+    let done = false
+    const onAbort = (): void => {
+      if (done) return
+      done = true
+      pendingPermissions.delete(requestId)
+      resolve({ allow: false, reason: 'aborted' })
+    }
+    pendingPermissions.set(requestId, {
+      resolve: (decision) => {
+        if (done) return
+        done = true
+        signal.removeEventListener('abort', onAbort)
+        resolve(decision)
+      }
+    })
+    signal.addEventListener('abort', onAbort)
+  })
+}
+
+/**
+ * Best-effort parse of the AskUserQuestion tool input into our typed shape.
+ * The SDK's tool input mostly matches our types; we just normalize defaults
+ * (multiSelect=false when missing, options always an array).
+ */
+function parseAskUserQuestionInput(
+  input: unknown
+): import('./../shared/types').UserQuestion[] {
+  const i = (input ?? {}) as Record<string, unknown>
+  const raw = Array.isArray(i.questions) ? (i.questions as unknown[]) : []
+  return raw
+    .map((q) => {
+      const obj = (q ?? {}) as Record<string, unknown>
+      const opts = Array.isArray(obj.options) ? (obj.options as unknown[]) : []
+      return {
+        question: typeof obj.question === 'string' ? obj.question : '',
+        header: typeof obj.header === 'string' ? obj.header : undefined,
+        multiSelect: !!obj.multiSelect,
+        options: opts.map((o) => {
+          const oo = (o ?? {}) as Record<string, unknown>
+          return {
+            label: typeof oo.label === 'string' ? oo.label : '',
+            description: typeof oo.description === 'string' ? oo.description : undefined,
+            preview: typeof oo.preview === 'string' ? oo.preview : undefined
+          }
+        })
+      }
+    })
+    .filter((q) => q.question && q.options.length > 0)
+}
+
+/**
+ * Format the user's selections as a plain-text "tool result" the agent can
+ * read. We return this via canUseTool's deny-with-message channel — the SDK
+ * surfaces it to the model as the AskUserQuestion result.
+ */
+function formatUserAnswers(
+  questions: import('./../shared/types').UserQuestion[],
+  answers: import('./../shared/types').UserQuestionAnswer[]
+): string {
+  const lines: string[] = ['User selected:']
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]
+    const a = answers.find((x) => x.questionIndex === i)
+    const selected = a?.selectedLabels ?? []
+    lines.push('')
+    lines.push(`Q: ${q.question}`)
+    if (selected.length === 0) lines.push(`A: (no selection)`)
+    else if (q.multiSelect) lines.push(`A: ${selected.join(', ')}`)
+    else lines.push(`A: ${selected[0]}`)
+  }
+  return lines.join('\n')
+}
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
@@ -84,7 +170,23 @@ const PROFILE_FILES_CODA = `
 - ~/.claude/soul.md captures how the user wants you to respond (already loaded below if it exists). When the user asks you to behave differently from now on, use the Edit tool to update it.
 - Both files persist across sessions. Don't ask permission to edit them when the user has clearly stated a new fact or preference; the user expects you to keep your context current.`
 
-function modelFor(): string {
+/**
+ * Resolve the model to use for a given conversation, in precedence order:
+ *   1. Per-conversation override (set by the inline header picker)
+ *   2. Global default in AppSettings (set by Settings → Gateway)
+ *   3. PORTICO_MODEL env var (legacy escape hatch)
+ *   4. DEFAULT_MODEL (Sonnet 4.6, hard fallback)
+ *
+ * Pass `undefined` for conversationId to skip step 1 (used by gatewayInfo for
+ * the global header badge).
+ */
+function modelFor(conversationId?: string): string {
+  if (conversationId) {
+    const convModel = conversations.getModel(conversationId)
+    if (convModel) return convModel
+  }
+  const settingsDefault = appSettings.get().defaultModel?.trim()
+  if (settingsDefault) return settingsDefault
   return process.env.PORTICO_MODEL?.trim() || DEFAULT_MODEL
 }
 
@@ -171,16 +273,27 @@ function createWindow(): BrowserWindow {
 }
 
 
-function gatewayInfo(): { gateway: string; configured: boolean; model: string } {
+function gatewayInfo(conversationId?: string): {
+  gateway: string
+  configured: boolean
+  model: string
+  /** True when the model resolved from a per-conversation override, not the default. */
+  modelIsOverride: boolean
+} {
   // Source of truth: in-app settings + env (settings already pushed into env
   // by appSettings.applyToEnv). Combining both here covers the case where the
   // user has only .env set or only settings.json set.
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? ''
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
-  const model = modelFor()
-  if (baseUrl.includes('portkey')) return { gateway: 'Portkey', configured: hasKey, model }
-  if (baseUrl) return { gateway: baseUrl, configured: hasKey, model }
-  return { gateway: 'Anthropic (direct)', configured: hasKey, model }
+  const model = modelFor(conversationId)
+  const modelIsOverride =
+    !!conversationId && !!conversations.getModel(conversationId) && model !== modelFor()
+  const gateway = baseUrl.includes('portkey')
+    ? 'Portkey'
+    : baseUrl
+      ? baseUrl
+      : 'Anthropic (direct)'
+  return { gateway, configured: hasKey, model, modelIsOverride }
 }
 
 app.whenReady().then(() => {
@@ -194,7 +307,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  ipcMain.handle('gateway:info', () => gatewayInfo())
+  ipcMain.handle('gateway:info', (_e, conversationId?: string) => gatewayInfo(conversationId))
 
   // ── Logs ──────────────────────────────────────────────────────────────
   ipcMain.handle('logs:recent', (_e, limit?: number) => recentLogs(limit))
@@ -300,6 +413,10 @@ app.whenReady().then(() => {
     conversations.setTrustProject(id, !!trust)
   })
 
+  ipcMain.handle('conversations:setModel', (_e, id: string, model: string | null) => {
+    conversations.setModel(id, model)
+  })
+
   ipcMain.handle('conversations:getSessionPermissions', (_e, id: string) =>
     conversations.getSessionAllowedPatterns(id)
   )
@@ -348,10 +465,11 @@ app.whenReady().then(() => {
       const cwd = storedCwd && isCwdSafe(storedCwd) ? storedCwd : undefined
       const trustProject = !!cwd && conversations.getTrustProject(conversationId)
 
+      const model = modelFor(conversationId)
       log.info('agent', 'query started', {
         runId,
         conversationId,
-        model: modelFor(),
+        model,
         cwd: cwd ?? '(none)',
         trustProject,
         resuming: !!resumeId,
@@ -386,12 +504,17 @@ app.whenReady().then(() => {
         const result = query({
           prompt: effectivePrompt,
           options: {
-            model: modelFor(),
+            model,
             systemPrompt: systemPromptFor(),
             includePartialMessages: true,
             abortController: controller,
             pathToClaudeCodeExecutable: claudeCodeExecPath(),
             settingSources,
+            // Tell the model that AskUserQuestion option previews will be
+            // rendered as markdown (our modal uses ReactMarkdown, not HTML
+            // injection). Without this the model defaults to markdown anyway,
+            // but being explicit avoids surprises if the SDK default ever flips.
+            toolConfig: { askUserQuestion: { previewFormat: 'markdown' } },
             // Keep SDK persistence on. We have our own conversations.json for
             // titles / sidebar listing / decisions / trust flag — but the SDK
             // needs its session JSONL on disk for `resume: sessionId` to work,
@@ -402,6 +525,39 @@ app.whenReady().then(() => {
               ? {
                   permissionMode: 'default',
                   canUseTool: async (toolName, toolInput, opts) => {
+                    // AskUserQuestion is a structured "ask the user to pick"
+                    // tool — handle it with a dedicated modal, not the generic
+                    // permission UI. The user's selection becomes the tool
+                    // result via the SDK's deny-with-message channel.
+                    if (toolName === 'AskUserQuestion') {
+                      const questions = parseAskUserQuestionInput(toolInput)
+                      if (questions.length === 0) {
+                        return {
+                          behavior: 'deny',
+                          message: 'AskUserQuestion called with no parseable questions.'
+                        }
+                      }
+                      const requestId = `${runId}:${crypto.randomUUID()}`
+                      send('agent:askUserQuestion', { requestId, questions })
+                      const response = await awaitPermissionOrAbort(requestId, opts.signal)
+                      if (!response.allow || !response.userAnswers) {
+                        return {
+                          behavior: 'deny',
+                          message: response.reason || 'User dismissed the question.'
+                        }
+                      }
+                      const answerText = formatUserAnswers(questions, response.userAnswers)
+                      log.info('agent', 'AskUserQuestion answered', {
+                        runId,
+                        questionCount: questions.length,
+                        answerCount: response.userAnswers.length
+                      })
+                      // We use deny-with-message because canUseTool has no
+                      // first-class "host-handled tool result" path — the
+                      // model reads the message as the tool's response.
+                      return { behavior: 'deny', message: answerText }
+                    }
+
                     // Per-session allowlist: skip the prompt entirely when a
                     // pattern the user previously approved matches this call.
                     const allowed = conversations.getSessionAllowedPatterns(conversationId)
@@ -431,17 +587,7 @@ app.whenReady().then(() => {
                       screening,
                       suggestedPattern
                     })
-                    const decision = await new Promise<PermissionDecision>(
-                      (resolve) => {
-                        pendingPermissions.set(requestId, { resolve })
-                        opts.signal.addEventListener('abort', () => {
-                          if (pendingPermissions.has(requestId)) {
-                            pendingPermissions.delete(requestId)
-                            resolve({ allow: false, reason: 'aborted' })
-                          }
-                        })
-                      }
-                    )
+                    const decision = await awaitPermissionOrAbort(requestId, opts.signal)
                     if (decision.allow) {
                       // If the user chose "Allow for session", persist the
                       // pattern so future matching calls skip the prompt.
@@ -482,7 +628,17 @@ app.whenReady().then(() => {
             (message as { subtype?: string }).subtype === 'init'
           ) {
             const sid = (message as { session_id?: string }).session_id
-            if (sid) conversations.setSessionId(conversationId, sid)
+            if (sid) {
+              conversations.setSessionId(conversationId, sid)
+            } else {
+              // Without a session_id we can't resume. Warn loudly so we notice
+              // if the SDK ever changes the init shape — silent failure here
+              // would degrade to single-turn-only mode without explanation.
+              log.warn('agent', 'init message had no session_id — multi-turn resume will not work', {
+                runId,
+                conversationId
+              })
+            }
           }
           send('agent:message', message)
         }

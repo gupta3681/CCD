@@ -70,6 +70,12 @@ export interface Conversation {
    * for syntax (`Bash(python *)`, `Read(/foo/*)`, bare `Edit`, etc.).
    */
   sessionAllowedPatterns?: string[]
+  /**
+   * Per-conversation model override. Takes precedence over the global default
+   * in AppSettings.defaultModel and the PORTICO_MODEL env var. Empty/missing
+   * = inherit from those.
+   */
+  model?: string
 }
 
 export interface SkillSummary {
@@ -106,8 +112,72 @@ export interface AppSettings {
   autoScreen: boolean
   // Gateway configured in-app (overrides .env). Empty = inherit from .env.
   gatewayBaseUrl?: string
+  // Default model for new conversations. Per-conversation override lives on
+  // Conversation.model and takes precedence. Empty = inherit from .env / hard default.
+  defaultModel?: string
   // Note: the API key never crosses the IPC boundary as plaintext after the
   // first time the user types it. The renderer sees only `gatewayKeySet: boolean`.
+}
+
+/**
+ * The models Portico knows about. The list is centralized so the picker UI,
+ * the Settings default dropdown, and the gateway info badge all share the
+ * same source of truth. Order matters — first entry is the hard fallback.
+ */
+export interface ModelOption {
+  id: string
+  label: string
+  /** Relative cost hint shown in the picker. */
+  tier: 'cheap' | 'standard' | 'premium'
+  hint: string
+  /**
+   * Context window size in tokens. Drives the header context meter so it
+   * scales when we add a 1M-context model (or enable the Sonnet 4.6 beta).
+   * Unknown models fall back to DEFAULT_CONTEXT_WINDOW.
+   */
+  contextWindow: number
+}
+
+/** Hard fallback when the resolved model isn't in KNOWN_MODELS. */
+export const DEFAULT_CONTEXT_WINDOW = 200_000
+
+export const KNOWN_MODELS: ReadonlyArray<ModelOption> = [
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Sonnet 4.6',
+    tier: 'standard',
+    hint: 'Balanced — best for most work.',
+    contextWindow: 200_000 // 1M available via context-1m beta header; we don't enable it today
+  },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Opus 4.7',
+    tier: 'premium',
+    hint: 'Strongest reasoning — pricier, slower. Use for hard refactors.',
+    contextWindow: 200_000
+  },
+  {
+    id: 'claude-haiku-4-5',
+    label: 'Haiku 4.5',
+    tier: 'cheap',
+    hint: 'Fast and cheap — good for quick lookups, summaries, simple edits.',
+    contextWindow: 200_000
+  }
+]
+
+/**
+ * Look up a model option by id. Returns null when the id isn't in our
+ * KNOWN_MODELS array — callers decide what to do (show the raw id as label,
+ * fall back to a default, etc.).
+ */
+export function lookupModel(modelId: string | null | undefined): ModelOption | null {
+  if (!modelId) return null
+  return KNOWN_MODELS.find((m) => m.id === modelId) ?? null
+}
+
+/** Look up the context window for a model id, falling back to the default. */
+export function contextWindowFor(modelId: string | null | undefined): number {
+  return lookupModel(modelId)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
 }
 
 export interface GatewayInfo {
@@ -132,6 +202,39 @@ export interface PermissionRequest {
   screening: Screening | null
   /** Suggested pattern if the user clicks "Allow for this session". */
   suggestedPattern?: string
+}
+
+/**
+ * Structured payload for the AskUserQuestion tool. The agent calls this tool
+ * when it wants the user to choose between concrete options. Instead of
+ * routing through the generic permission UI (which would show raw JSON), we
+ * intercept it in canUseTool and surface a dedicated modal.
+ */
+export interface UserQuestionOption {
+  label: string
+  description?: string
+  /** Optional preview content (markdown). Rendered in a small box under the label. */
+  preview?: string
+}
+
+export interface UserQuestion {
+  question: string
+  /** Short header rendered above the question (e.g. "Choose framework"). */
+  header?: string
+  multiSelect: boolean
+  options: UserQuestionOption[]
+}
+
+export interface UserQuestionRequest {
+  requestId: string
+  questions: UserQuestion[]
+}
+
+export interface UserQuestionAnswer {
+  /** Index into the request's `questions` array. */
+  questionIndex: number
+  /** Selected option labels. Always at least 1 item; multiSelect can have many. */
+  selectedLabels: string[]
 }
 
 export interface PermissionScreeningStart {

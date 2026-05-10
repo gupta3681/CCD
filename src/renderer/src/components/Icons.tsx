@@ -67,3 +67,21 @@ export function ArrowIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+// Up-arrow inside the send button. Universal "send a message" glyph.
+export function SendArrowIcon(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M8 13V3M8 3L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// Solid square inside the stop button. Reads as "stop generating".
+export function StopGlyphIcon(): React.JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+      <rect x="1" y="1" width="8" height="8" rx="1.5" />
+    </svg>
+  )
+}

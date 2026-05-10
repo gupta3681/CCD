@@ -130,6 +130,13 @@ function ToolResultBlock({ text, isError }: { text: string; isError: boolean }):
   const lines = text.split('\n')
   const lineCount = lines.length
   const trimmed = text.trim()
+
+  // Detect AskUserQuestion answer round-trip — main returns the user's
+  // selection via canUseTool's deny-with-message channel (the only way to
+  // smuggle a tool result through that callback). The SDK marks it isError,
+  // but it's not an error — render it as an "answered" panel.
+  const isAnswered = isError && trimmed.startsWith('User selected:')
+
   if (!trimmed) {
     return (
       <div className="text-[11px] text-stone italic">
@@ -137,6 +144,22 @@ function ToolResultBlock({ text, isError }: { text: string; isError: boolean }):
       </div>
     )
   }
+
+  if (isAnswered) {
+    // Strip the "User selected:" prefix and render the Q/A pairs directly.
+    const body = trimmed.replace(/^User selected:\s*/, '').trim()
+    return (
+      <div className="rounded-[8px] border border-[#4a8a5e]/30 bg-[#4a8a5e]/5 px-3 py-2 text-[12px]">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-[#2f6240]">
+          ✓ You answered
+        </div>
+        <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11.5px] leading-[1.5] text-graphite">
+          {body}
+        </pre>
+      </div>
+    )
+  }
+
   const preview = trimmed.slice(0, 110).replace(/\s+/g, ' ')
   return (
     <div
@@ -235,8 +258,16 @@ function summarizeToolCall(name: string, input: unknown): ToolSummary {
       const desc = typeof i.description === 'string' ? i.description : 'subtask'
       return { verb: 'Spawned', target: desc }
     }
-    case 'AskUserQuestion':
-      return { verb: 'Asked', target: 'a question' }
+    case 'AskUserQuestion': {
+      // The agent passes a `questions` array; show the first question's text
+      // (truncated) as the summary. Falls back to "a question" if shape is off.
+      const qs = Array.isArray(i.questions) ? (i.questions as Array<Record<string, unknown>>) : []
+      const first = qs[0]?.question
+      const text = typeof first === 'string' ? first : 'a question'
+      const more = qs.length > 1 ? ` (+${qs.length - 1} more)` : ''
+      const trimmed = text.length > 60 ? `${text.slice(0, 57)}…` : text
+      return { verb: 'Asked', target: `"${trimmed}"${more}` }
+    }
     default:
       return { verb: 'Ran', target: name }
   }

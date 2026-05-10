@@ -9,16 +9,22 @@ import type {
   PermissionScreeningStart,
   Skill,
   SkillSummary,
-  SettingsPaths
+  SettingsPaths,
+  UserQuestionAnswer,
+  UserQuestionRequest
 } from '../shared/types'
 
 // Re-export shared types so the renderer can keep importing from '../../preload'.
+// Type-only re-exports are erased at build; do NOT add runtime value exports
+// here — the renderer would try to bundle the entire preload module
+// (including contextBridge calls) and crash at load.
 export type {
   AppSettings,
   Block,
   Bubble,
   Conversation,
   ConversationSummary,
+  ModelOption,
   Persona,
   PermissionMode,
   PermissionRequest,
@@ -27,14 +33,20 @@ export type {
   Skill,
   SkillSummary,
   SettingsPaths,
+  UserQuestion,
+  UserQuestionAnswer,
+  UserQuestionOption,
+  UserQuestionRequest,
   Verdict
 } from '../shared/types'
 
 type Disposer = () => void
 
 const api = {
-  gatewayInfo: (): Promise<{ gateway: string; configured: boolean; model: string }> =>
-    ipcRenderer.invoke('gateway:info'),
+  gatewayInfo: (
+    conversationId?: string
+  ): Promise<{ gateway: string; configured: boolean; model: string; modelIsOverride: boolean }> =>
+    ipcRenderer.invoke('gateway:info', conversationId),
 
   query: (prompt: string, runId: string, conversationId: string): Promise<void> =>
     ipcRenderer.invoke('agent:query', prompt, runId, conversationId),
@@ -43,7 +55,12 @@ const api = {
 
   respondPermission: (
     requestId: string,
-    decision: { allow: boolean; reason?: string; allowPattern?: string }
+    decision: {
+      allow: boolean
+      reason?: string
+      allowPattern?: string
+      userAnswers?: UserQuestionAnswer[]
+    }
   ): Promise<void> => ipcRenderer.invoke('permission:respond', requestId, decision),
 
   appSettings: {
@@ -70,6 +87,15 @@ const api = {
     ): void => cb(payload.payload)
     ipcRenderer.on('permission:screening', handler)
     return () => ipcRenderer.off('permission:screening', handler)
+  },
+
+  onAskUserQuestion: (cb: (req: UserQuestionRequest) => void): Disposer => {
+    const handler = (
+      _e: unknown,
+      payload: { runId: string; payload: UserQuestionRequest }
+    ): void => cb(payload.payload)
+    ipcRenderer.on('agent:askUserQuestion', handler)
+    return () => ipcRenderer.off('agent:askUserQuestion', handler)
   },
 
   logs: {
@@ -151,6 +177,8 @@ const api = {
       ipcRenderer.invoke('conversations:setCwd', id, cwd),
     setTrustProject: (id: string, trust: boolean): Promise<void> =>
       ipcRenderer.invoke('conversations:setTrustProject', id, trust),
+    setModel: (id: string, model: string | null): Promise<void> =>
+      ipcRenderer.invoke('conversations:setModel', id, model),
     getSessionPermissions: (id: string): Promise<string[]> =>
       ipcRenderer.invoke('conversations:getSessionPermissions', id),
     revokeSessionPermission: (id: string, pattern: string): Promise<string[]> =>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppSettings, Skill, SkillSummary, SettingsPaths } from '../../../preload'
+import { ModelPicker } from './ModelPicker'
 
 type Tab = 'gateway' | 'permissions' | 'memory' | 'soul' | 'skills' | 'advanced'
 
@@ -83,6 +84,7 @@ function TabBtn(props: {
 function GatewayTab(): React.JSX.Element {
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [defaultModel, setDefaultModel] = useState<string | null>(null)
   const [keySet, setKeySet] = useState(false)
   const [keyStorage, setKeyStorage] = useState<'encrypted' | 'plaintext' | 'none'>('none')
   const [showKey, setShowKey] = useState(false)
@@ -93,6 +95,7 @@ function GatewayTab(): React.JSX.Element {
   useEffect(() => {
     window.api.appSettings.get().then((s) => {
       setBaseUrl(s.gatewayBaseUrl ?? '')
+      setDefaultModel(s.defaultModel ?? null)
       setKeySet(s.gatewayKeySet)
       setKeyStorage(s.keyStorage)
       setLoaded(true)
@@ -103,7 +106,8 @@ function GatewayTab(): React.JSX.Element {
     setSaving(true)
     try {
       const patch: Parameters<typeof window.api.appSettings.set>[0] = {
-        gatewayBaseUrl: baseUrl.trim()
+        gatewayBaseUrl: baseUrl.trim(),
+        defaultModel: defaultModel ?? undefined
       }
       if (apiKey.length > 0) patch.gatewayApiKey = apiKey
       const next = await window.api.appSettings.set(patch)
@@ -143,6 +147,19 @@ function GatewayTab(): React.JSX.Element {
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder="https://api.portkey.ai/v1"
             className="w-full rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-2 text-[14px] text-ink outline-none focus:border-onyx/30"
+          />
+        </Field>
+
+        <Field
+          label="Default model"
+          hint="The model new conversations start with. Override per-conversation by clicking the model name in the header."
+        >
+          <ModelPicker
+            variant="settings"
+            value={defaultModel}
+            onChange={(id) => setDefaultModel(id)}
+            allowClear
+            globalDefaultLabel="Sonnet 4.6"
           />
         </Field>
 

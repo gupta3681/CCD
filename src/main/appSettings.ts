@@ -96,7 +96,8 @@ export function get(): PublicSettings {
 const WRITABLE: ReadonlySet<keyof AppSettings> = new Set([
   'permissionMode',
   'autoScreen',
-  'gatewayBaseUrl'
+  'gatewayBaseUrl',
+  'defaultModel'
 ])
 
 export function set(

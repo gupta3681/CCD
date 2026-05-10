@@ -6,7 +6,17 @@ import { BubbleView } from './components/BubbleView'
 import { Settings } from './components/Settings'
 import { PersonaWizard } from './components/PersonaWizard'
 import { Tour, tourCompleted, clearTourCompleted } from './components/Tour'
-import type { Block, Bubble, ConversationSummary } from '../../preload'
+import { ModelPicker } from './components/ModelPicker'
+import { UserQuestionModal } from './components/UserQuestionModal'
+import { Composer } from './components/Composer'
+import { contextWindowFor, lookupModel } from '../../shared/types'
+import type {
+  Block,
+  Bubble,
+  ConversationSummary,
+  UserQuestionAnswer,
+  UserQuestionRequest
+} from '../../preload'
 
 // SDK partial-message stream events (see Anthropic SDK BetaRawMessageStreamEvent).
 type StreamEvent =
@@ -61,10 +71,6 @@ interface SDKMessage {
   subtype?: string
 }
 
-// All current Claude models default to a 200k context window. (Sonnet 4.6
-// supports 1M via the context-1m beta header, which we don't currently enable.)
-const CONTEXT_WINDOW_MAX = 200_000
-
 function extractToolResultText(content: unknown): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
@@ -110,9 +116,14 @@ function App(): React.JSX.Element {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const [gateway, setGateway] = useState<{ gateway: string; configured: boolean; model: string } | null>(
-    null
-  )
+  const [gateway, setGateway] = useState<{
+    gateway: string
+    configured: boolean
+    model: string
+    modelIsOverride: boolean
+  } | null>(null)
+  // The per-conversation model override (null = inherit global default).
+  const [conversationModel, setConversationModel] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID())
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [collapsed, toggleCollapsed] = useCollapsedSidebar()
@@ -124,6 +135,8 @@ function App(): React.JSX.Element {
   const [firstRun, setFirstRun] = useState<boolean>(false)
   const [userName, setUserName] = useState<string | null>(null)
   const [sessionPatterns, setSessionPatterns] = useState<string[]>([])
+  // The active AskUserQuestion request, if any. When set, the modal is shown.
+  const [askUserQuestion, setAskUserQuestion] = useState<UserQuestionRequest | null>(null)
   const [tourActive, setTourActive] = useState<boolean>(false)
   const headerGatewayRef = useRef<HTMLDivElement>(null)
   const inputBarRef = useRef<HTMLTextAreaElement>(null)
@@ -143,6 +156,13 @@ function App(): React.JSX.Element {
   const refreshList = useCallback(async () => {
     const list = await window.api.conversations.list()
     setConversations(list)
+  }, [])
+
+  // Re-fetch gateway info when conversation changes so the header model badge
+  // reflects the per-conversation override.
+  const refreshGateway = useCallback(async (id: string): Promise<void> => {
+    const info = await window.api.gatewayInfo(id)
+    setGateway(info)
   }, [])
 
   // Apply a stream_event into the current bubble list. Each assistant turn
@@ -221,7 +241,8 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.api.gatewayInfo().then(setGateway)
+    // gatewayInfo is fetched by the conversationId-deps effect below — don't
+    // double-fire on mount.
     window.api.settings.profile.isFirstRun().then(setFirstRun)
     window.api.settings.profile.name().then(setUserName)
     refreshList()
@@ -323,6 +344,10 @@ function App(): React.JSX.Element {
       setBubbles((prev) => upsertBubble(prev, bubble))
     })
 
+    const offAskQuestion = window.api.onAskUserQuestion((req) => {
+      setAskUserQuestion(req)
+    })
+
     const offCancelled = window.api.onCancelled((runId) => {
       // Tag the in-flight assistant bubble for this run so the UI shows a
       // "Stopped" badge under whatever was streamed so far.
@@ -360,9 +385,16 @@ function App(): React.JSX.Element {
       offErr()
       offScreening()
       offRequest()
+      offAskQuestion()
       offCancelled()
     }
   }, [refreshList, applyStreamEvent])
+
+  // Re-resolve gateway info whenever the active conversation OR its model
+  // changes, so the header badge always shows the right model name.
+  useEffect(() => {
+    refreshGateway(conversationId)
+  }, [conversationId, conversationModel, refreshGateway])
 
   async function decidePermission(
     requestId: string,
@@ -390,6 +422,23 @@ function App(): React.JSX.Element {
   async function revokeSessionPattern(pattern: string): Promise<void> {
     const next = await window.api.conversations.revokeSessionPermission(conversationId, pattern)
     setSessionPatterns(next)
+  }
+
+  async function submitAskUserQuestion(answers: UserQuestionAnswer[]): Promise<void> {
+    if (!askUserQuestion) return
+    const requestId = askUserQuestion.requestId
+    setAskUserQuestion(null)
+    await window.api.respondPermission(requestId, { allow: true, userAnswers: answers })
+  }
+
+  async function dismissAskUserQuestion(): Promise<void> {
+    if (!askUserQuestion) return
+    const requestId = askUserQuestion.requestId
+    setAskUserQuestion(null)
+    await window.api.respondPermission(requestId, {
+      allow: false,
+      reason: 'User dismissed the question without answering.'
+    })
   }
 
   useEffect(() => {
@@ -453,8 +502,15 @@ function App(): React.JSX.Element {
     setTrustProject(false)
     setContextTokens(null)
     setSessionPatterns([])
+    setConversationModel(null)
     loadedBubblesRef.current = null
     currentMessageIdRef.current.clear()
+  }
+
+  async function changeModel(model: string | null): Promise<void> {
+    setConversationModel(model)
+    await window.api.conversations.setModel(conversationId, model)
+    // Header badge refreshes via the conversationModel-deps effect above.
   }
 
   async function selectSession(id: string): Promise<void> {
@@ -474,6 +530,7 @@ function App(): React.JSX.Element {
     setCwd(conv.cwd ?? null)
     setTrustProject(!!conv.trustProject)
     setSessionPatterns(conv.sessionAllowedPatterns ?? [])
+    setConversationModel(conv.model ?? null)
     // Reset until the next assistant message tells us actual usage.
     setContextTokens(null)
   }
@@ -515,13 +572,6 @@ function App(): React.JSX.Element {
   async function toggleTrustProject(next: boolean): Promise<void> {
     setTrustProject(next)
     await window.api.conversations.setTrustProject(conversationId, next)
-  }
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
   }
 
   return (
@@ -575,14 +625,23 @@ function App(): React.JSX.Element {
                     gateway.configured ? 'bg-[#4a8a5e]' : 'bg-terra'
                   }`}
                 />
-                <span>
-                  {gateway.gateway} · {gateway.model}
-                  {gateway.configured ? '' : ' · not configured'}
-                </span>
+                <span>{gateway.gateway} ·</span>
+                <ModelPicker
+                  variant="header"
+                  value={conversationModel}
+                  onChange={changeModel}
+                  allowClear
+                  globalDefaultLabel={defaultModelLabel(gateway.model, conversationModel)}
+                  badgeLabel={
+                    (lookupModel(gateway.model)?.label ?? gateway.model) +
+                    (gateway.modelIsOverride ? ' ·' : '')
+                  }
+                />
+                {!gateway.configured && <span>· not configured</span>}
                 {contextTokens != null && (
                   <>
                     <span className="text-stone">·</span>
-                    <ContextMeter tokens={contextTokens} max={CONTEXT_WINDOW_MAX} />
+                    <ContextMeter tokens={contextTokens} max={contextWindowFor(gateway.model)} />
                   </>
                 )}
               </div>
@@ -637,40 +696,14 @@ function App(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="border-t border-parchment bg-vellum px-6 pb-4 pt-3">
-          <div className="mx-auto flex max-w-[760px] flex-col gap-2">
-            <div className="flex items-end gap-3">
-              <textarea
-                ref={inputBarRef}
-                className="min-h-[52px] flex-1 resize-none rounded-[9.6px] border border-onyx/15 bg-snow px-3 py-3 text-[15px] text-ink outline-none placeholder:text-stone focus:border-onyx/30"
-                placeholder="Ask anything…  (Enter to send, Shift+Enter for newline)"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                rows={2}
-                disabled={busy}
-              />
-              {busy ? (
-                <button
-                  onClick={stop}
-                  className="flex h-[52px] items-center gap-2 rounded-[9.6px] border border-onyx/20 bg-snow px-5 text-[15px] font-medium text-ink transition-opacity hover:bg-vellum"
-                  title="Stop generating"
-                >
-                  <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-ink" />
-                  Stop
-                </button>
-              ) : (
-                <button
-                  onClick={send}
-                  disabled={!input.trim()}
-                  className="h-[52px] rounded-[9.6px] bg-ink px-5 text-[15px] font-medium text-snow transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  Send
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSend={send}
+          onStop={stop}
+          busy={busy}
+          inputRef={inputBarRef}
+        />
       </div>
       )}
 
@@ -687,6 +720,18 @@ function App(): React.JSX.Element {
           sessionPatterns={sessionPatterns}
           onRevokeSessionPattern={revokeSessionPattern}
           rootRef={rightSidebarRef}
+        />
+      )}
+
+      {askUserQuestion && (
+        <UserQuestionModal
+          // Key by requestId so a new request always gets a fresh modal —
+          // prevents a stale `selections` array from a previous question
+          // hanging around if React would otherwise reuse the instance.
+          key={askUserQuestion.requestId}
+          questions={askUserQuestion.questions}
+          onSubmit={submitAskUserQuestion}
+          onDismiss={dismissAskUserQuestion}
         />
       )}
 
@@ -815,6 +860,18 @@ function BusySpinner(): React.JSX.Element {
       <span>{verb}…</span>
     </div>
   )
+}
+
+/**
+ * Resolve a friendly label for the global default model — used in the header
+ * picker's "Use default · …" item. When there's no per-conversation override,
+ * the resolved gateway model IS the default; when there IS an override, the
+ * resolved model is the override and we don't have the default's id handy
+ * — fall back to "default" rather than fib.
+ */
+function defaultModelLabel(resolvedModelId: string, override: string | null): string {
+  if (override) return 'default'
+  return lookupModel(resolvedModelId)?.label ?? resolvedModelId
 }
 
 function greetingFor(name: string | null): string {
