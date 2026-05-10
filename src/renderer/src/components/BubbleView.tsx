@@ -49,11 +49,12 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
 
   if (bubble.role === 'user') {
     const text = blocks.map((b) => (b.type === 'text' ? b.text : '')).join('')
+    // Soft-azure card sized to its content. `self-start` opts out of the
+    // flex-column's stretch so short messages ("hi") don't bloom to full
+    // width; long messages grow to the column max and wrap.
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-[9.6px] bg-ink px-4 py-3 text-[15px] leading-[1.5] text-snow">
-          {text}
-        </div>
+      <div className="self-start max-w-full rounded-[12px] bg-azure/35 px-4 py-2.5 text-[15px] leading-[1.55] text-ink whitespace-pre-wrap break-words">
+        {text}
       </div>
     )
   }
@@ -63,27 +64,24 @@ export function BubbleView({ bubble, onPermissionDecision }: Props): React.JSX.E
   const hasFinalText = blocks.some((b) => b.type === 'text' && b.text.trim().length > 0)
   const interrupted = !!bubble.interrupted
 
+  // Assistant turn — no outer bubble. Content flows directly on the page like
+  // a document. Special blocks (thinking, tool_use, tool_result) get their
+  // own framing as inset cards so they're still visually distinct.
   return (
-    <div className="flex justify-start">
-      <div
-        className={`prose-portico flex max-w-[85%] flex-col gap-2 rounded-[9.6px] border bg-snow px-4 py-3 text-[15px] leading-[1.5] text-ink ${
-          interrupted ? 'border-terra/40' : 'border-parchment'
-        }`}
-      >
-        {blocks.map((blk, i) => {
-          if (blk.type === 'thinking')
-            return <ThinkingBlock key={i} text={blk.thinking} done={hasFinalText} />
-          if (blk.type === 'tool_use') return <ToolUseBlock key={i} name={blk.name} input={blk.input} />
-          if (blk.type === 'text') return <TextBlock key={i} text={blk.text} />
-          return null
-        })}
-        {interrupted && (
-          <div className="mt-1 flex items-center gap-1.5 border-t border-parchment pt-2 text-[11px] text-terra">
-            <span>✕</span>
-            <span>Stopped by you. Your next message will let Claude know it was interrupted.</span>
-          </div>
-        )}
-      </div>
+    <div className="prose-portico flex flex-col gap-3 px-1 text-[15px] leading-[1.6] text-ink">
+      {blocks.map((blk, i) => {
+        if (blk.type === 'thinking')
+          return <ThinkingBlock key={i} text={blk.thinking} done={hasFinalText} />
+        if (blk.type === 'tool_use') return <ToolUseBlock key={i} name={blk.name} input={blk.input} />
+        if (blk.type === 'text') return <TextBlock key={i} text={blk.text} />
+        return null
+      })}
+      {interrupted && (
+        <div className="flex items-center gap-1.5 text-[11px] text-terra">
+          <span>✕</span>
+          <span>Stopped by you. Your next message will let Claude know it was interrupted.</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -108,7 +106,7 @@ function ThinkingBlock({ text, done }: { text: string; done: boolean }): React.J
   const lines = text.trim().split('\n').filter(Boolean)
   const preview = lines.length > 0 ? lines[lines.length - 1] : '…'
   return (
-    <div className="rounded-[8px] border border-parchment bg-vellum/60 px-3 py-2">
+    <div className="rounded-[8px] border border-parchment bg-snow px-3 py-2">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between text-left text-[11px] font-medium uppercase tracking-wider text-dusty hover:text-ink"
@@ -164,7 +162,7 @@ function ToolResultBlock({ text, isError }: { text: string; isError: boolean }):
   return (
     <div
       className={`rounded-[8px] border px-3 py-2 text-[12px] ${
-        isError ? 'border-terra/40 bg-terra/5' : 'border-parchment bg-vellum/40'
+        isError ? 'border-terra/40 bg-terra/5' : 'border-parchment bg-snow'
       }`}
     >
       <button
@@ -177,7 +175,7 @@ function ToolResultBlock({ text, isError }: { text: string; isError: boolean }):
         <span className="text-stone">{open ? '−' : '+'}</span>
       </button>
       {open ? (
-        <pre className="mt-2 max-h-[300px] overflow-auto rounded-[6px] bg-snow p-2 text-[11.5px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
+        <pre className="mt-2 max-h-[300px] overflow-auto rounded-[6px] bg-vellum p-2 text-[11.5px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
           {text}
         </pre>
       ) : (
@@ -277,10 +275,10 @@ function ToolUseBlock({ name, input }: { name: string; input: unknown }): React.
   const [open, setOpen] = useState(false)
   const { verb, target, stats } = summarizeToolCall(name, input)
   return (
-    <div className="rounded-[6px] bg-vellum/60">
+    <div className="rounded-[6px] border border-parchment bg-snow">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-2.5 py-1 text-left text-[12px] text-graphite hover:text-ink"
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-graphite hover:text-ink"
       >
         <span className="text-graphite">{verb}</span>
         <span className="font-mono text-ink">{target}</span>
@@ -337,7 +335,7 @@ function ToolDetail({ name, input }: { name: string; input: unknown }): React.JS
   if (name === 'Bash') {
     const cmd = typeof i.command === 'string' ? i.command : ''
     return (
-      <pre className="max-h-[200px] overflow-auto rounded-[6px] bg-snow p-2 text-[11px] leading-[1.5] text-ink whitespace-pre-wrap break-words">
+      <pre className="max-h-[200px] overflow-auto rounded-[6px] bg-vellum p-2 text-[11px] leading-[1.5] text-ink whitespace-pre-wrap break-words">
         $ {cmd}
       </pre>
     )
@@ -351,7 +349,7 @@ function ToolDetail({ name, input }: { name: string; input: unknown }): React.JS
     json = '(unserializable)'
   }
   return (
-    <pre className="max-h-[260px] overflow-auto rounded-[6px] bg-snow p-2 text-[11px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
+    <pre className="max-h-[260px] overflow-auto rounded-[6px] bg-vellum p-2 text-[11px] leading-[1.5] text-graphite whitespace-pre-wrap break-words">
       {json}
     </pre>
   )

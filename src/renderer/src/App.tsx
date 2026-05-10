@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Sidebar, useCollapsedSidebar } from './components/Sidebar'
 import { RightSidebar, useCollapsedRightSidebar } from './components/RightSidebar'
-import { BubbleView } from './components/BubbleView'
+import { TurnView, groupTurns } from './components/TurnView'
 import { Settings } from './components/Settings'
 import { PersonaWizard } from './components/PersonaWizard'
 import { Tour, tourCompleted, clearTourCompleted } from './components/Tour'
@@ -41,6 +41,17 @@ type StreamEvent =
   | { type: 'content_block_stop'; index: number }
   | { type: 'message_delta' }
   | { type: 'message_stop' }
+
+/**
+ * What the agent is doing right now, derived from the most recent stream
+ * event. Drives the spinner copy so a long quiet stretch shows the cause
+ * (e.g. "Running WebSearch…" while the SDK is offline-running the tool).
+ */
+type AgentPhase =
+  | { kind: 'thinking' }
+  | { kind: 'tool'; name: string }
+  | { kind: 'writing' }
+  | null
 
 interface SDKMessage {
   type: string
@@ -137,6 +148,9 @@ function App(): React.JSX.Element {
   const [sessionPatterns, setSessionPatterns] = useState<string[]>([])
   // The active AskUserQuestion request, if any. When set, the modal is shown.
   const [askUserQuestion, setAskUserQuestion] = useState<UserQuestionRequest | null>(null)
+  // What the agent is doing right now — surfaced in the spinner so 25-second
+  // pauses don't feel mysterious. Updated on each content_block_start.
+  const [agentPhase, setAgentPhase] = useState<AgentPhase>(null)
   const [tourActive, setTourActive] = useState<boolean>(false)
   const headerGatewayRef = useRef<HTMLDivElement>(null)
   const inputBarRef = useRef<HTMLTextAreaElement>(null)
@@ -199,6 +213,13 @@ function App(): React.JSX.Element {
 
       if (ev.type === 'content_block_start') {
         const cb = ev.content_block
+        // Side-effect: surface what the agent is doing in the spinner. The
+        // phase persists between content_block_start events, so during the
+        // SDK's offline tool-running gap (no events flowing) the spinner
+        // still says "Running WebSearch…" instead of going blank.
+        if (cb.type === 'thinking') setAgentPhase({ kind: 'thinking' })
+        else if (cb.type === 'text') setAgentPhase({ kind: 'writing' })
+        else if (cb.type === 'tool_use') setAgentPhase({ kind: 'tool', name: cb.name })
         const newBlock: Block | null =
           cb.type === 'text'
             ? { type: 'text', text: cb.text ?? '' }
@@ -364,6 +385,7 @@ function App(): React.JSX.Element {
       currentMessageIdRef.current.delete(runId)
       setBusy(false)
       setActiveRunId(null)
+      setAgentPhase(null)
     })
     const offErr = window.api.onError((runId, err) => {
       currentMessageIdRef.current.delete(runId)
@@ -377,6 +399,7 @@ function App(): React.JSX.Element {
       ])
       setBusy(false)
       setActiveRunId(null)
+      setAgentPhase(null)
     })
 
     return () => {
@@ -481,6 +504,7 @@ function App(): React.JSX.Element {
     const runIdToCancel = activeRunId
     setBusy(false)
     setActiveRunId(null)
+    setAgentPhase(null)
     if (runIdToCancel) {
       currentMessageIdRef.current.delete(runIdToCancel)
       try {
@@ -689,10 +713,10 @@ function App(): React.JSX.Element {
                 </p>
               </div>
             )}
-            {bubbles.map((b) => (
-              <BubbleView key={b.id} bubble={b} onPermissionDecision={decidePermission} />
+            {groupTurns(bubbles, busy).map((turn) => (
+              <TurnView key={turn.id} turn={turn} onPermissionDecision={decidePermission} />
             ))}
-            {busy && <BusySpinner />}
+            {busy && <BusySpinner phase={agentPhase} />}
           </div>
         </div>
 
@@ -841,7 +865,17 @@ const SPINNER_VERBS = [
   'Actioning the takeaways'
 ]
 
-function BusySpinner(): React.JSX.Element {
+/**
+ * Spinner shown while the agent works. Has two layers:
+ *
+ *   1. The phase label (left of the verb) — derived from the most recent
+ *      stream event. Tells the user WHAT the agent is doing right now
+ *      ("Thinking", "Running WebSearch", "Writing answer"). Crucial when
+ *      a tool runs offline for 25s with no events flowing — without this
+ *      the screen looks frozen.
+ *   2. The corporate verb (right) — rotates every 2.5s for delight.
+ */
+function BusySpinner({ phase }: { phase: AgentPhase }): React.JSX.Element {
   const [verb, setVerb] = useState(() => SPINNER_VERBS[Math.floor(Math.random() * SPINNER_VERBS.length)])
   useEffect(() => {
     const id = setInterval(() => {
@@ -854,10 +888,21 @@ function BusySpinner(): React.JSX.Element {
     }, 2500)
     return () => clearInterval(id)
   }, [])
+
+  const phaseLabel =
+    phase == null
+      ? 'Working'
+      : phase.kind === 'thinking'
+        ? 'Thinking'
+        : phase.kind === 'writing'
+          ? 'Writing answer'
+          : `Running ${phase.name}`
+
   return (
     <div className="flex items-center gap-2 text-[12px] text-stone">
       <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone" />
-      <span>{verb}…</span>
+      <span className="text-graphite">{phaseLabel}…</span>
+      <span className="text-stone/70">· {verb.toLowerCase()}</span>
     </div>
   )
 }
