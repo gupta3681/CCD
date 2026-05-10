@@ -2,7 +2,7 @@
 
 > Portkey-compliant desktop GUI for the Claude Agent SDK. **Powered by Claude.** Mac + Windows. Single-developer V1.
 
-The product is named *Portico*. The repo dir name (`CCD`) is internal and unchanged. See `ReferenceDesign.md` for the visual style system (Anthropic "Vellum"); the office-hours design doc lives at `~/.gstack/projects/CCD/aryan-main-design-*.md`.
+The product is named *Portico*. The repo dir name (`CCD`) is internal and unchanged. See `ReferenceDesign.md` for the visual style system (Anthropic "Vellum");
 
 ## V1 scope
 
